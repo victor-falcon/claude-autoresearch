@@ -9,14 +9,16 @@ description: Finalize an autoresearch session into clean, reviewable branches. U
 
 Turn a noisy autoresearch branch into clean, independent branches — one per logical change, each starting from the merge-base.
 
-This skill is loaded by `/autoresearch finalize` (or directly as `autoresearch:autoresearch-finalize`). It only uses git and the bundled `finalize.sh`; it doesn't need autoresearch mode to be on.
+This skill is loaded by `/autoresearch finalize` (or directly as `autoresearch:autoresearch-finalize`). It only uses git and the bundled `finalize.sh`; it needs `git` and `node` on `PATH`.
+
+**Autoresearch mode must be off while finalizing.** Otherwise the plugin resumes the experiment loop as soon as your turn ends (for example while waiting for the user's approval below) and starts new experiments on the branch you're splitting. If the `mcp__autoresearch__*` tools are available, the mode is on: ask the user to run `/autoresearch off` first.
 
 ## Step 1 — Analyze and Propose Groups
 
 1. Read `.auto/log.jsonl` (legacy: `autoresearch.jsonl`). Filter to **kept** experiments only.
 2. Read `.auto/prompt.md` (legacy: `autoresearch.md`) for context.
 3. Expand all short commit hashes to full hashes: `git rev-parse <short_hash>`
-4. Get the merge-base: `git merge-base HEAD main`
+4. Find the trunk branch (`git symbolic-ref --short refs/remotes/origin/HEAD`, minus the `origin/` prefix; otherwise `main` or `master`, whichever exists; ask the user if unsure), then get the merge-base: `git merge-base HEAD <trunk>`
 5. For each kept commit, get the diff stat (use `$BASE..<commit>` for the first, `<prev_kept>..<commit>` for subsequent).
 6. Group kept commits into logical changesets:
    - **Preserve application order.** Group N comes before Group N+1.
@@ -48,7 +50,7 @@ Write `/tmp/groups.json`:
 ```json
 {
   "base": "<full merge-base hash>",
-  "trunk": "main",
+  "trunk": "<trunk branch, e.g. main>",
   "final_tree": "<full hash of current HEAD>",
   "goal": "short-slug",
   "groups": [

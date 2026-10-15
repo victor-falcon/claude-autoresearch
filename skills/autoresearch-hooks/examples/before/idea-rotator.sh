@@ -12,7 +12,7 @@ readonly LEGACY_IDEAS_FILE="autoresearch.ideas.md"
 readonly UNCHECKED_PATTERN='^- \[ \]'
 
 first_unchecked_idea() {
-  grep -m1 -E "$UNCHECKED_PATTERN" "$1" | sed 's/^- \[ \] //'
+  { grep -m1 -E "$UNCHECKED_PATTERN" "$1" || true; } | sed 's/^- \[ \] //'
 }
 
 resolve_ideas() {

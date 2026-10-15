@@ -62,12 +62,12 @@ parse_groups() {
   [ -f "$groups_file" ] || fail "$groups_file not found"
 
   # Serialize JSON fields into flat files so bash can consume them without jq.
-  # Node is already a dependency (used by the extension), so no new dep required.
+  # Paths go in via argv so quotes in them can't break the script.
   DATA_DIR=$(mktemp -d)
   node -e "
 const fs = require('fs');
-const config = JSON.parse(fs.readFileSync('$groups_file', 'utf-8'));
-const outDir = '$DATA_DIR';
+const [groupsFile, outDir] = process.argv.slice(1);
+const config = JSON.parse(fs.readFileSync(groupsFile, 'utf-8'));
 fs.writeFileSync(outDir + '/base', config.base);
 fs.writeFileSync(outDir + '/trunk', config.trunk || 'main');
 fs.writeFileSync(outDir + '/final_tree', config.final_tree);
@@ -79,7 +79,7 @@ config.groups.forEach((group, idx) => {
   fs.writeFileSync(outDir + '/' + idx + '.last_commit', group.last_commit);
   fs.writeFileSync(outDir + '/' + idx + '.slug', group.slug);
 });
-" || fail "Failed to parse $groups_file — check JSON syntax."
+" "$groups_file" "$DATA_DIR" || fail "Failed to parse $groups_file — check JSON syntax."
 
   BASE=$(cat "$DATA_DIR/base")
   TRUNK=$(cat "$DATA_DIR/trunk")

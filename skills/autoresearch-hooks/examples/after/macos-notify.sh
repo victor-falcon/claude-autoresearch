@@ -17,7 +17,8 @@ is_new_best() {
 
 send_desktop_notification() {
   if command -v osascript >/dev/null; then
-    osascript -e "display notification \"$1\" with title \"$TITLE\"" >/dev/null
+    # Pass text as arguments so quotes in it can't break the AppleScript.
+    osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' "$1" "$TITLE" >/dev/null
   elif command -v notify-send >/dev/null; then
     notify-send "$TITLE" "$1"
   fi
