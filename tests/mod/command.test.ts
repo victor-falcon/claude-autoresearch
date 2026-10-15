@@ -158,12 +158,12 @@ test('/autoresearch clear deletes the log, resets the state and turns the mode o
   expect(await autoresearch($, 'clear')).toBe('No session log found. Autoresearch mode OFF')
 })
 
-test('/autoresearch dashboard and export answer what their modules answer', async ($, on) => {
+test('/autoresearch dashboard and export answer what their modules answer, without activating', async ($, on) => {
   const host = new LoopHost(new World('/repo'))
   host.install(on, { enabled: false })
   await startSession($, host.world)
 
-  expect(await autoresearch($, 'dashboard')).toContain('dashboard')
+  expect(await autoresearch($, 'dashboard')).toBe('Autoresearch mode is not active.')
   expect(await autoresearch($, 'export')).toContain('export')
   expect(host.world.state.enabled ?? false).toBe(false)
 })

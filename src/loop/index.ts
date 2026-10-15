@@ -129,7 +129,7 @@ export function registerLoop(on: On): void {
       lastMessageCount = await messageCount($).catch(() => 0)
       if (!hasCompactHook()) await resumeAfterCompaction($)
     }
-  })
+  }).catch(($, e, next) => (logFailure($, 'command.run (compact)', next.error.message), next(e)))
 
   // Where `prompt.compose` is bypassed, the mode's guidance rides on each of
   // the user's prompts instead (the plugin's own prompts carry it themselves).

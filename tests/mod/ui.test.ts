@@ -7,6 +7,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { openDashboard } from '../../src/ui/dashboard.ts'
 import { World, startSession } from './world.ts'
+import { autoresearch } from './loop-host.ts'
 
 const PANE = 'autoresearch-dashboard'
 const LOG = 'mcp__autoresearch__log_experiment'
@@ -70,6 +71,8 @@ test('the widget stays out of the band while the mode is off', async ($, on) => 
   captureUi(on)
   world.install(on, { enabled: false })
   await startSession($, world)
+  // A seeded log switches the mode on at session start; the user turns it off.
+  await autoresearch($, 'off')
   const ui = await $.ui.mount({ plugin: 'autoresearch', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect(await ui.find({ text: /autoresearch/ })).toBe(undefined)
   expect(await ui.find({ text: 'engine band' })).not.toBe(undefined)
@@ -139,6 +142,8 @@ test('the status line is cleared while the mode is off', async ($, on) => {
   const seen = captureUi(on)
   world.install(on, { enabled: false })
   await startSession($, world)
+  // A seeded log switches the mode on at session start; the user turns it off.
+  await autoresearch($, 'off')
   expect(seen.status.at(-1)).toBe(undefined)
 })
 
