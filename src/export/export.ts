@@ -12,9 +12,11 @@ import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult
 import { extractAutoresearchSessionName } from '../core/jsonl.ts'
 import { relative } from '../core/pathutil.ts'
 import { sessionFile, sessionWorkDir } from '../runtime/session.ts'
+import { getExperiment } from '../runtime/state.ts'
 import { injectDataIntoTemplate } from './template.ts'
 
-type Export$ = Pick<EngineInterface, 'clock' | 'env' | 'fs' | 'plugin' | 'process' | 'session'>
+type Export$ = Pick<EngineInterface, 'clock' | 'fs' | 'plugin' | 'process' | 'session' | 'state'>
+type ServerStream = HookStream<ProcessSpawnChunk, ProcessSpawnResult>
 
 /** How long `node` may take to print its port before the export gives up. */
 const START_TIMEOUT_MS = 10_000
@@ -23,13 +25,17 @@ const LISTENING = /^listening (\d+)$/m
 
 type DashboardServer = {
   logPath: string
-  htmlPath: string
+  /** The page it serves, to tell whether the next export can reuse it. */
+  html: string
   url: string
-  stream: HookStream<ProcessSpawnChunk, ProcessSpawnResult>
+  stream: ServerStream
 }
 
+// A live process handle cannot be kept in `$.state`, so the server is module
+// state; the module unloading ends the process with it.
 let server: DashboardServer | null = null
-let cachedLogoDataUrl: string | null = null
+/** Bumped by every stop, so a start still waiting for its port ends itself. */
+let generation = 0
 let cachedOpener: string[] | null = null
 /** Exports run one at a time, so two never start two servers. */
 let queue: Promise<unknown> = Promise.resolve()
@@ -37,7 +43,8 @@ let queue: Promise<unknown> = Promise.resolve()
 /**
  * Write the dashboard, serve it on 127.0.0.1 with live updates, open the
  * browser, and answer the text shown to the user. Reuses the running server
- * when it serves the same log.
+ * when it serves the same log and page. `args` is the command's contract;
+ * export takes none, as upstream.
  */
 export function exportDashboard($: Export$, _args: string): Promise<string> {
   const run = queue.then(() => exportNow($))
@@ -45,14 +52,26 @@ export function exportDashboard($: Export$, _args: string): Promise<string> {
   return run
 }
 
-/** Stop the dashboard server, if one runs. Safe to call at any time. */
+/** Stop the dashboard server, if one runs or is starting. Safe at any time. */
 export function stopDashboardServer(): void {
+  generation++
+  endServer()
+}
+
+function endServer(): void {
   const running = server
   server = null
-  if (running) void running.stream.return(undefined as never).catch(() => undefined)
+  if (running) endStream(running.stream)
+}
+
+/** Ending the stream kills the process (`$.process.spawn`). */
+function endStream(stream: ServerStream): void {
+  void stream.return(undefined as never).catch(() => undefined)
 }
 
 async function exportNow($: Export$): Promise<string> {
+  // A stop from here on (mode off, session end) cancels this export's server.
+  const startedIn = generation
   const workDir = await sessionWorkDir($)
   const logPath = await sessionFile($, 'log')
   if (!(await $.fs.exists(logPath))) {
@@ -65,14 +84,11 @@ async function exportNow($: Export$): Promise<string> {
       await sessionName($, logPath),
       await logoDataUrl($),
     )
-    let running = server?.logPath === logPath ? server : null
-    if (running) {
-      await $.fs.write(running.htmlPath, html)
-    } else {
-      stopDashboardServer()
-      const htmlPath = `${await tempDir($)}/autoresearch-dashboard-${randomId()}/index.html`
-      await $.fs.write(htmlPath, html)
-      running = await startServer($, htmlPath, logPath)
+    let running = server
+    if (running?.logPath !== logPath || running.html !== html) {
+      endServer()
+      running = await startServer($, logPath, html, startedIn)
+      server = running
     }
     await openInBrowser($, running.url)
     return `Dashboard at ${running.url} (live updates)`
@@ -81,84 +97,84 @@ async function exportNow($: Export$): Promise<string> {
   }
 }
 
-/** The first config header's name, as upstream; the default when unreadable. */
+/** The first config header's name, as upstream. */
 async function sessionName($: Export$, logPath: string): Promise<string> {
   try {
     return extractAutoresearchSessionName(await $.fs.read(logPath))
   } catch {
-    // Over $.fs's 4 MiB read cap: the server still serves the whole log.
-    return extractAutoresearchSessionName('')
+    // Over $.fs's 4 MiB read cap: the session's name as loaded at start (the
+    // server still serves the whole log).
+    return (await getExperiment($)).name || extractAutoresearchSessionName('')
   }
 }
 
 async function logoDataUrl($: Export$): Promise<string> {
-  if (cachedLogoDataUrl) return cachedLogoDataUrl
   const { base64 } = await $.fs.read(`${$.plugin.root}/assets/logo.webp`, { as: 'bytes' })
-  cachedLogoDataUrl = `data:image/webp;base64,${base64}`
-  return cachedLogoDataUrl
-}
-
-async function tempDir($: Export$): Promise<string> {
-  return ((await $.env.get('TMPDIR')) || '/tmp').replace(/\/+$/, '')
-}
-
-function randomId(): string {
-  let id = ''
-  for (let i = 0; i < 16; i++) id += Math.floor(Math.random() * 16).toString(16)
-  return id
+  return `data:image/webp;base64,${base64}`
 }
 
 /**
- * Start assets/dashboard-server.mjs and resolve once it prints its port. The
- * stream is then read in the background for the server's whole life; when
- * the server exits on its own, it is forgotten so the next export starts one.
+ * Start assets/dashboard-server.mjs with the page on its stdin, and resolve
+ * once it listens. Its output is then drained for the server's whole life.
+ * Fails if a stop came after `startedIn` (a generation).
  */
-function startServer($: Export$, htmlPath: string, logPath: string): Promise<DashboardServer> {
-  const stream = $.process.spawn({ argv: ['node', `${$.plugin.root}/assets/dashboard-server.mjs`, htmlPath, logPath] })
-  const stop = () => void stream.return(undefined as never).catch(() => undefined)
-
-  return new Promise((resolve, reject) => {
-    let started: DashboardServer | null = null
-    let stdout = ''
-    let stderr = ''
-    const timer = $.clock.after(START_TIMEOUT_MS, () => {
-      stop()
-      reject(new Error(`the dashboard server did not start within ${START_TIMEOUT_MS / 1000}s`))
-    })
-
-    void (async () => {
-      let failure: string | null = null
-      try {
-        for await (const { stream: pipe, text } of stream) {
-          if (started) continue
-          if (pipe === 'stderr') {
-            stderr += text
-            continue
-          }
-          stdout += text
-          const port = LISTENING.exec(stdout)?.[1]
-          if (!port) continue
-          timer.cancel()
-          started = { logPath, htmlPath, url: `http://127.0.0.1:${port}`, stream }
-          server = started
-          resolve(started)
-        }
-      } catch (error) {
-        failure = error instanceof Error ? error.message : String(error)
-      }
-      if (server === started) server = null
-      if (started) return
-      timer.cancel()
-      reject(new Error(startFailure(failure, stderr)))
-    })()
+async function startServer($: Export$, logPath: string, html: string, startedIn: number): Promise<DashboardServer> {
+  const stream = $.process.spawn({ argv: ['node', `${$.plugin.root}/assets/dashboard-server.mjs`, logPath], input: html })
+  let timedOut = false
+  const timer = $.clock.after(START_TIMEOUT_MS, () => {
+    timedOut = true
+    endStream(stream)
   })
+  const outcome = await readUntilListening(stream).finally(() => timer.cancel())
+  if (timedOut) throw new Error(`the dashboard server did not start within ${START_TIMEOUT_MS / 1000}s`)
+  if ('error' in outcome) throw new Error(outcome.error)
+  if (generation !== startedIn) {
+    endStream(stream)
+    throw new Error('the dashboard was stopped while it started')
+  }
+  const started = { logPath, html, url: `http://127.0.0.1:${outcome.port}`, stream }
+  void superviseServer(started)
+  return started
 }
 
-function startFailure(spawnError: string | null, stderr: string): string {
-  // The first pull rejects when `node` cannot be started at all.
-  if (spawnError) return `could not run node (${spawnError}); the browser dashboard needs Node.js on your PATH`
+/**
+ * Read the server's output up to `listening <port>`. Pulls with `next()`
+ * rather than `for await`, whose exit would end the stream and the server.
+ */
+async function readUntilListening(stream: ServerStream): Promise<{ port: string } | { error: string }> {
+  let stdout = ''
+  let stderr = ''
+  try {
+    for (;;) {
+      const step = await stream.next()
+      if (step.done) break
+      if (step.value.stream === 'stderr') {
+        stderr += step.value.text
+        continue
+      }
+      stdout += step.value.text
+      const port = LISTENING.exec(stdout)?.[1]
+      if (port) return { port }
+    }
+  } catch (error) {
+    // The first pull rejects when `node` cannot be started at all.
+    const reason = error instanceof Error ? error.message : String(error)
+    return { error: `could not run node (${reason}); the browser dashboard needs Node.js on your PATH` }
+  }
   const detail = stderr.trim().split('\n').slice(-5).join('\n')
-  return `the dashboard server exited before listening${detail ? `:\n${detail}` : ''}`
+  return { error: `the dashboard server exited before listening${detail ? `:\n${detail}` : ''}` }
+}
+
+/** Drain a listening server's output; once it exits, forget it. */
+async function superviseServer(started: DashboardServer): Promise<void> {
+  try {
+    while (!(await started.stream.next()).done) {
+      // The server writes nothing more; this only waits for its end.
+    }
+  } catch {
+    // Ended from outside.
+  }
+  if (server === started) server = null
 }
 
 /**
@@ -174,7 +190,8 @@ async function openInBrowser($: Export$, url: string): Promise<void> {
 async function browserOpener($: Export$): Promise<string[]> {
   if (cachedOpener) return cachedOpener
   const uname = await $.process.run(['uname', '-s']).catch(() => null)
-  if (!uname || uname.exitCode !== 0) cachedOpener = ['cmd', '/c', 'start', '""']
-  else cachedOpener = uname.stdout.trim() === 'Darwin' ? ['open'] : ['xdg-open']
+  // No `uname`: Windows. Only a real answer is kept for the session.
+  if (!uname || uname.exitCode !== 0) return ['cmd', '/c', 'start', '""']
+  cachedOpener = uname.stdout.trim() === 'Darwin' ? ['open'] : ['xdg-open']
   return cachedOpener
 }

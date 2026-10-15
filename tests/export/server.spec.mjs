@@ -20,9 +20,9 @@ let dir, logPath, child, port
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'autoresearch-server-test-'))
   logPath = join(dir, 'log.jsonl')
-  writeFileSync(join(dir, 'index.html'), '<title>dashboard</title>')
   writeFileSync(logPath, CONFIG + RUN(1))
-  child = spawn(process.execPath, [SERVER, join(dir, 'index.html'), logPath], { stdio: ['ignore', 'pipe', 'inherit'] })
+  child = spawn(process.execPath, [SERVER, logPath], { stdio: ['pipe', 'pipe', 'inherit'] })
+  child.stdin.end('<title>dashboard</title>')
   port = await new Promise((resolve, reject) => {
     let out = ''
     child.stdout.on('data', chunk => {
@@ -78,6 +78,7 @@ test('it serves nothing else', async () => {
     assert.equal((await get(path)).status, 404, path)
   }
   assert.equal((await get('/', { method: 'POST' })).status, 405)
+  assert.equal((await get('/events', { method: 'HEAD' })).status, 404)
 })
 
 test('it refuses other Host names (DNS rebinding)', async () => {

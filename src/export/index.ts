@@ -1,10 +1,10 @@
 import type { On } from 'claude-code'
 
+import { PLUGIN } from '../tools/specs.ts'
 import { stopDashboardServer } from './export.ts'
 
 export { exportDashboard, stopDashboardServer } from './export.ts'
 
-const PLUGIN = 'autoresearch'
 const END_REASONS = ['clear', 'resume', 'logout', 'prompt_input_exit', 'other'] as const
 
 /**

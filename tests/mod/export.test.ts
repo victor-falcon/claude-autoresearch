@@ -4,7 +4,7 @@
 // (assets/dashboard-server.mjs) is tested with Node in tests/export.
 
 import type { CommandRunInput, On } from 'claude-code'
-import { expect, test, type Engine } from 'claude-code/testing'
+import { expect, mock, test, type Engine } from 'claude-code/testing'
 
 import { escapeHtml, injectDataIntoTemplate } from '../../src/export/template.ts'
 
@@ -21,8 +21,8 @@ async function autoresearch($: Engine, args: string): Promise<string> {
 const TEMPLATE = '<title>__AUTORESEARCH_TITLE__</title><script>const SHARE_LOGO_URL = \'__AUTORESEARCH_LOGO__\';</script>'
 const LOG = '/repo/.auto/log.jsonl'
 
-type Server = { argv: string[]; stopped: boolean }
-type Spawn = { listen?: string; stderr?: string; fail?: string }
+type Server = { argv: string[]; input: string | undefined; stopped: boolean }
+type Spawn = { listen?: string; stderr?: string; fail?: string; delayMs?: number }
 
 class Host {
   readonly files = new Map<string, string>()
@@ -39,15 +39,10 @@ class Host {
     return this.servers.filter(server => !server.stopped)
   }
 
-  html(): string {
-    const pages = [...this.files].filter(([path]) => path.endsWith('/index.html'))
-    return pages.at(-1)?.[1] ?? ''
-  }
-
   install(on: On): void {
+    mock.clock(on, { now: 1_000 })
     on('session.cwd', () => ({ value: '/repo' }))
     on('session.end', ($, e) => ({ sessionId: e.sessionId }))
-    on('env.get', ($, e) => ({ value: e.name === 'TMPDIR' ? '/tmp/t/' : undefined }))
     on('fs.exists', ($, e) => ({ value: this.files.has(e.path) }))
     on('fs.read', ($, e) => {
       if (e.path.endsWith('/assets/template.html')) return { value: TEMPLATE }
@@ -69,11 +64,12 @@ class Host {
     const host = this
     on('process.spawn', async function* ($, e) {
       if (host.spawn.fail) throw new Error(host.spawn.fail)
-      const server: Server = { argv: [...e.argv], stopped: false }
+      const server: Server = { argv: [...e.argv], input: e.input, stopped: false }
       host.servers.push(server)
       try {
         if (host.spawn.stderr) yield { stream: 'stderr' as const, text: host.spawn.stderr }
         if (!host.spawn.listen) return { value: { code: 1, signal: null } }
+        if (host.spawn.delayMs) await sleep(host.spawn.delayMs)
         yield { stream: 'stdout' as const, text: host.spawn.listen }
         // Serves until the mod ends the stream.
         for (;;) {
@@ -121,13 +117,15 @@ test('export writes the page, serves it with node, opens the browser and answers
   expect(text).toBe('Dashboard at http://127.0.0.1:4242 (live updates)')
 
   const [server] = host.servers
+  expect(server?.argv.length).toBe(3)
   expect(server?.argv[0]).toBe('node')
   expect(server?.argv[1]?.endsWith('/assets/dashboard-server.mjs')).toBe(true)
-  expect(server?.argv[2]).toMatch(/^\/tmp\/t\/autoresearch-dashboard-[0-9a-f]{16}\/index\.html$/)
-  expect(server?.argv[3]).toBe(LOG)
-  expect(host.files.get(server!.argv[2]!)).toBe(
+  expect(server?.argv[2]).toBe(LOG)
+  // The page goes to the server's stdin: no file of it in a shared temp dir.
+  expect(server?.input).toBe(
     "<title>Speed &lt;up&gt;</title><script>const SHARE_LOGO_URL = 'data:image/webp;base64,TE9HTw==';</script>",
   )
+  expect([...host.files.keys()]).toEqual([LOG])
   expect(host.opened).toEqual([['open', 'http://127.0.0.1:4242']])
   expect(host.running.length).toBe(1)
 })
@@ -141,18 +139,31 @@ test('xdg-open opens the browser outside macOS', async ($, on) => {
   expect(host.opened).toEqual([['xdg-open', 'http://127.0.0.1:4242']])
 })
 
-test('a second export reuses the running server and refreshes the page', async ($, on) => {
+test('a second export reuses the running server while the page is the same', async ($, on) => {
+  const host = new Host('{"type":"config","name":"First"}\n')
+  host.install(on)
+
+  await autoresearch($, 'export')
+  host.files.set(LOG, '{"type":"config","name":"First"}\n{"run":1}\n')
+  const again = await autoresearch($, 'export')
+
+  expect(again).toBe('Dashboard at http://127.0.0.1:4242 (live updates)')
+  expect(host.servers.length).toBe(1)
+  expect(host.opened.length).toBe(2)
+})
+
+test('a renamed session gets a fresh server with the new title', async ($, on) => {
   const host = new Host('{"type":"config","name":"First"}\n')
   host.install(on)
 
   await autoresearch($, 'export')
   host.files.set(LOG, '{"type":"config","name":"Second"}\n')
-  const again = await autoresearch($, 'export')
+  await autoresearch($, 'export')
+  await sleep(20)
 
-  expect(again).toBe('Dashboard at http://127.0.0.1:4242 (live updates)')
-  expect(host.servers.length).toBe(1)
-  expect(host.html()).toContain('<title>Second</title>')
-  expect(host.opened.length).toBe(2)
+  expect(host.servers.length).toBe(2)
+  expect(host.running.length).toBe(1)
+  expect(host.running[0]?.input).toContain('<title>Second</title>')
 })
 
 test('turning the mode off stops the server; the next export starts a new one', async ($, on) => {
@@ -177,6 +188,22 @@ test('the session ending stops the server', async ($, on) => {
 
   await autoresearch($, 'export')
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 's', resume: { id: 's' } })
+  await sleep(20)
+  expect(host.running.length).toBe(0)
+})
+
+test('the session ending while the server starts leaves no server behind', async ($, on) => {
+  const host = new Host('{"type":"config","name":"x"}\n')
+  host.spawn = { listen: 'listening 4242\n', delayMs: 50 }
+  host.install(on)
+  // Loads the plugin, so the export below is under way when the session ends.
+  await $.command.describe({ command: 'autoresearch' } as never).catch(() => undefined)
+
+  const exported = autoresearch($, 'export')
+  await sleep(10)
+  await $.session.end({ reason: 'clear', sessionId: 's', resume: { id: 's' } })
+
+  expect(await exported).toBe('Export failed: the dashboard was stopped while it started')
   await sleep(20)
   expect(host.running.length).toBe(0)
 })
