@@ -43,6 +43,9 @@ jobs:
       - name: Finalize script tests
         run: npm run test:finalize
 
+      - name: Dashboard server tests
+        run: npm run test:export
+
       - name: Mod tests
         run: npm run test:mod
 
