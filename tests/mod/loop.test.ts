@@ -138,7 +138,8 @@ test('turning the mode off cancels a pending resume', async ($, on) => {
   expect(host.submitted).toEqual([])
 })
 
-test(`auto-resume stops after ${AUTORESUME_TURN_LIMIT} resume prompts`, async ($, on) => {
+// Drives 201 full turns: about 1.6 s locally, over the 5 s default on CI runners.
+test(`auto-resume stops after ${AUTORESUME_TURN_LIMIT} resume prompts`, { timeoutMs: 30_000 }, async ($, on) => {
   const host = await activeSession($, on)
   for (let i = 0; i <= AUTORESUME_TURN_LIMIT; i++) {
     await startTurn($, `t${i}`)
