@@ -1,0 +1,20 @@
+{
+  // The mod: what the engine loads (hooks, src) plus its contract and mod tests.
+  // .claude-plugin/types is laid by the engine, or by scripts/fetch-types.sh.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": [],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
+  },
+  "include": [".claude-plugin/types", "hooks", "types", "src", "tests/mod"]
+}

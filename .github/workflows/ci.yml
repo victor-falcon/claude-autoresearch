@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The mod API is early access: pin the Claude Code build the types and the
+  # test kit come from, and bump it deliberately.
+  CLAUDE_CODE_VERSION: 2.1.300
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      # None of the steps below needs an API key or a login.
+      - name: Lay the mod API types
+        run: npm run types
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Core tests
+        run: npm run test:core
+
+      - name: Mod tests
+        run: npm run test:mod
+
+      - name: Validate plugin and marketplace
+        run: npm run validate

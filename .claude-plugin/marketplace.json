@@ -1,0 +1,14 @@
+{
+  "name": "autoresearch",
+  "owner": { "name": "Víctor Falcón" },
+  "metadata": {
+    "description": "Autonomous experiment loop for Claude Code, ported from pi-autoresearch."
+  },
+  "plugins": [
+    {
+      "name": "autoresearch",
+      "source": "./",
+      "description": "Autonomous experiment loop for Claude Code: try an idea, benchmark it, keep or revert, repeat."
+    }
+  ]
+}
