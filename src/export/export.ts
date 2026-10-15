@@ -41,7 +41,7 @@ let cachedOpener: string[] | null = null
 let queue: Promise<unknown> = Promise.resolve()
 
 /**
- * Write the dashboard, serve it on 127.0.0.1 with live updates, open the
+ * Build the dashboard, serve it on 127.0.0.1 with live updates, open the
  * browser, and answer the text shown to the user. Reuses the running server
  * when it serves the same log and page. `args` is the command's contract;
  * export takes none, as upstream.
