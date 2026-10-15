@@ -117,6 +117,22 @@ test('/autoresearch finalize needs a logged run, then stops the loop and loads t
   expect(host.submitted).toEqual(['Use the Skill tool to load the `autoresearch:autoresearch-finalize` skill and follow it.'])
 })
 
+test('/autoresearch finalize mid-turn sends the skill prompt once the aborted turn has ended', async ($, on) => {
+  const world = new World('/repo', { '.auto/prompt.md': '# rules', '.auto/log.jsonl': LOG_WITH_RUN })
+  const host = new LoopHost(world)
+  host.install(on)
+  await startSession($, world)
+  await startTurn($, 'turn-1')
+
+  expect(await autoresearch($, 'finalize')).toBe('Loading autoresearch-finalize skill')
+  expect(host.aborted).toEqual(['turn-1'])
+  expect(host.submitted).toEqual([])
+
+  await endTurn($, 'turn-1', 'aborted')
+  await world.clock.advance(0)
+  expect(host.submitted).toEqual(['Use the Skill tool to load the `autoresearch:autoresearch-finalize` skill and follow it.'])
+})
+
 test('/autoresearch clear deletes the log, resets the state and turns the mode off', async ($, on) => {
   const world = new World('/repo', { '.auto/prompt.md': '# rules', '.auto/log.jsonl': LOG_WITH_RUN })
   const host = new LoopHost(world)

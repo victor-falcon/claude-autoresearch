@@ -9,10 +9,11 @@ import { lastRunEntry } from '../core/jsonl.ts'
 import { sessionFileCandidates } from '../core/paths.ts'
 import { relative } from '../core/pathutil.ts'
 import { buildSessionSnapshot } from '../core/state.ts'
-import { recordActivation, resetLoopRuntime, stopAutoresearchLoop } from '../loop/index.ts'
+import { recordActivation, resetLoopRuntime, stopAutoresearchLoop } from '../loop/mode.ts'
+import { submitWhenIdle } from '../loop/resume.ts'
 import { reloadExperiment, sessionFile, sessionWorkDir } from '../runtime/index.ts'
 import { getEnabled, getExperiment, setEnabled, updateAutoResume } from '../runtime/state.ts'
-import { fireHook } from '../tools/index.ts'
+import { abortRunningExperiment, fireHook } from '../tools/index.ts'
 
 const CREATE_SKILL = 'autoresearch:autoresearch-create'
 const FINALIZE_SKILL = 'autoresearch:autoresearch-finalize'
@@ -23,17 +24,6 @@ export function skillKickoff(skill: string, args = ''): string {
   return [`Use the Skill tool to load the \`${skill}\` skill and follow it.`, goal ? `Arguments: ${goal}` : '']
     .filter(Boolean)
     .join('\n')
-}
-
-/**
- * Send the model a prompt once this command has returned: a `command.run`
- * hook may not submit (the turn would wait on the hook), so a timer does,
- * and the engine queues it until the session is idle.
- */
-function submitAfterCommand($: Pick<EngineInterface, 'clock' | 'prompt' | 'ui'>, text: string): void {
-  $.clock.after(0, () => {
-    $.prompt.submit({ text }).catch(error => $.ui.log(`autoresearch: could not send the prompt: ${String(error)}`))
-  })
 }
 
 /** `/autoresearch off`: stop the loop, keep the log. */
@@ -58,7 +48,7 @@ export async function finalizeAutoresearch($: EngineInterface): Promise<string> 
     return "No logged experiments to finalize — use '/autoresearch <goal>' to start a session"
   }
   if (await getEnabled($)) await stopAutoresearchLoop($)
-  submitAfterCommand($, skillKickoff(FINALIZE_SKILL))
+  submitWhenIdle($, skillKickoff(FINALIZE_SKILL))
   return 'Loading autoresearch-finalize skill'
 }
 
@@ -68,6 +58,8 @@ export async function clearAutoresearch($: EngineInterface): Promise<string> {
   await recordActivation($, false)
   await setEnabled($, false)
   await resetLoopRuntime($)
+  // A run in flight would log into the log about to be deleted.
+  abortRunningExperiment()
 
   const deleted: string[] = []
   let failure: string | null = null
@@ -103,9 +95,8 @@ export async function activateAutoresearch($: EngineInterface, args: string): Pr
   await updateAutoResume($, value => ({ ...value, turns: 0 }))
 
   const rulesLoaded = await $.fs.exists(await sessionFile($, 'prompt'))
-  const kickoff = rulesLoaded
-    ? `Autoresearch mode active. ${args} ${BENCHMARK_GUARDRAIL}`.replace(/\s+/g, ' ').trim()
-    : skillKickoff(CREATE_SKILL, `${args} ${BENCHMARK_GUARDRAIL}`.replace(/\s+/g, ' '))
+  const goal = `${args} ${BENCHMARK_GUARDRAIL}`.replace(/\s+/g, ' ').trim()
+  const kickoff = rulesLoaded ? `Autoresearch mode active. ${goal}` : skillKickoff(CREATE_SKILL, goal)
 
   const state = await getExperiment($)
   const logPath = await sessionFile($, 'log')
@@ -120,7 +111,7 @@ export async function activateAutoresearch($: EngineInterface, args: string): Pr
 
   // Upstream prepends the hook's output only when prompt.md exists, so a new
   // session's kickoff stays the skill invocation.
-  submitAfterCommand($, activationSteer && rulesLoaded ? `${activationSteer}\n\n${kickoff}` : kickoff)
+  submitWhenIdle($, activationSteer && rulesLoaded ? `${activationSteer}\n\n${kickoff}` : kickoff)
 
   return rulesLoaded
     ? 'Autoresearch mode ON — rules loaded from .auto/prompt.md'

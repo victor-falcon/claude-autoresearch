@@ -17,6 +17,8 @@ export const SETTLED_WINDOW_MS = 800
 
 let timer: Timer | null = null
 let runningTurnId: string | null = null
+/** Prompts held until the running turn ends (an aborted turn never drains a queue). */
+let afterTurn: string[] = []
 
 /** The main loop's turn in flight (its `turn.start` id), or null when idle. */
 export function runningTurn(): string | null {
@@ -25,6 +27,27 @@ export function runningTurn(): string | null {
 
 export function setRunningTurn(turnId: string | null): void {
   runningTurnId = turnId
+}
+
+function submitSoon($: Pick<EngineInterface, 'clock' | 'prompt' | 'ui'>, text: string): void {
+  // A timer, not the calling hook: a `command.run` hook may not submit (the
+  // turn would wait on it). The engine queues the prompt until it is idle.
+  $.clock.after(0, () => {
+    $.prompt.submit({ text }).catch(error => $.ui.log(`autoresearch: could not send the prompt: ${messageOf(error)}`))
+  })
+}
+
+/** Send the model a prompt once the session is idle: after the running turn, if any. */
+export function submitWhenIdle($: Pick<EngineInterface, 'clock' | 'prompt' | 'ui'>, text: string): void {
+  if (runningTurnId !== null) afterTurn.push(text)
+  else submitSoon($, text)
+}
+
+/** Send what waited for the turn that just ended. */
+export function flushAfterTurn($: Pick<EngineInterface, 'clock' | 'prompt' | 'ui'>): void {
+  const waiting = afterTurn
+  afterTurn = []
+  for (const text of waiting) submitSoon($, text)
 }
 
 /** Stop the timer, keeping the pending prompt for a later reschedule. */
@@ -70,6 +93,8 @@ export async function sendPendingResumeIfReady($: Resume$): Promise<void> {
     $.ui.toast(reason)
     return
   }
+  // A turn may have started during the reads above: its end reschedules.
+  if (runningTurnId !== null) return
   await updateAutoResume($, value => ({ ...value, pendingResume: null, turns: value.turns + 1 }))
   // Queued by the engine until the session is idle; resolves as its turn starts.
   $.prompt.submit({ text: pending.message }).catch(error => $.ui.log(`autoresearch: could not send the resume prompt: ${messageOf(error)}`))

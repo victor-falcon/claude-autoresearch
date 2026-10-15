@@ -4,10 +4,18 @@ import { composeResumeMessage, shouldAutoResumeAfterTurn } from '../core/autores
 import { getAutoResume, getEnabled, setRunning, updateAutoResume } from '../runtime/state.ts'
 import { modeSection, PROMPT_SECTION_ID } from './prompt.ts'
 import { composeRehydrationMessage } from './rehydrate.ts'
-import { cancelPendingResume, ensurePendingResume, messageOf, pausePendingResume, setRunningTurn } from './resume.ts'
+import { cancelPendingResume, ensurePendingResume, flushAfterTurn, messageOf, pausePendingResume, setRunningTurn } from './resume.ts'
 
-export { recordActivation, resetLoopRuntime, startLoop, stopAutoresearchLoop } from './mode.ts'
-export { cancelPendingResume, runningTurn } from './resume.ts'
+export { startLoop } from './mode.ts'
+
+/** Log a hook's failure from its `.catch` handler, where a `$` call may reject. */
+function logFailure($: { ui: { log: (text: string) => unknown } }, event: string, message: string | undefined): void {
+  try {
+    $.ui.log(`autoresearch: ${event} hook failed: ${message ?? 'unknown error'}`)
+  } catch {
+    // Re-entry: nothing to log with.
+  }
+}
 
 /**
  * The continuous loop: auto-resume after each main-loop turn, the re-prompt
@@ -24,11 +32,12 @@ export function registerLoop(on: On): void {
     pausePendingResume()
     await updateAutoResume($, value => (value.experimentsThisSession === 0 ? value : { ...value, experimentsThisSession: 0 }))
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(($, e, next) => (logFailure($, 'turn.start', next.error.message), next(e)))
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e)
     setRunningTurn(null)
+    flushAfterTurn($)
     try {
       await setRunning($, null)
       if (e.reason !== 'answer') {
@@ -47,7 +56,7 @@ export function registerLoop(on: On): void {
       $.ui.log(`autoresearch: auto-resume skipped: ${messageOf(error)}`)
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(($, e, next) => (logFailure($, 'turn.complete', next.error.message), next(e)))
 
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
@@ -61,12 +70,12 @@ export function registerLoop(on: On): void {
       $.ui.log(`autoresearch: no re-prompt after compaction: ${messageOf(error)}`)
     }
     return result
-  }).catch(($, e, next) => next(e))
+  }).catch(($, e, next) => (logFailure($, 'session.compact', next.error.message), next(e)))
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if (!(await getEnabled($))) return composed
     const text = await modeSection($)
     return { sections: [...composed.sections, { id: PROMPT_SECTION_ID, text, scope: 'session' as const }] }
-  })
+  }).catch(($, e, next) => (logFailure($, 'prompt.compose', next.error.message), next(e)))
 }
