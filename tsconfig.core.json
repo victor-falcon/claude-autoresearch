@@ -1,5 +1,5 @@
 {
-  // The pure core and its unit tests, run by `node --test` (Node types, no engine).
+  // The pure core (and the UI's pure formatter) and their unit tests, run by `node --test` (Node types, no engine).
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023"],
@@ -15,5 +15,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/core", "types", "tests/core"]
+  "include": ["src/core", "src/ui/format.ts", "types", "tests/core", "tests/ui"]
 }

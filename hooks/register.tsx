@@ -8,7 +8,7 @@ import { registerExport } from '../src/export/index.ts'
 import { registerLoop } from '../src/loop/index.ts'
 import { startRuntime } from '../src/runtime/index.ts'
 import { registerTools, startTools } from '../src/tools/index.ts'
-import { registerUi } from '../src/ui/index.ts'
+import { registerUi, startUi } from '../src/ui/index.ts'
 
 export const register: Register = on => {
   // A module may hook session.start only once without a matcher, so it lives
@@ -16,6 +16,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await startRuntime($)
     await startTools($)
+    await startUi($)
     return next(e)
   })
 
