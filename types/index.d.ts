@@ -1,4 +1,4 @@
-// The claude-autoresearch contract: every value the mod keeps in `$.state`,
+// The autoresearch plugin contract: every value the mod keeps in `$.state`,
 // and the experiment types shared by `src/core` (pure) and the feature modules.
 //
 // Derived from pi-autoresearch's `ExperimentState` / `AutoresearchRuntime`.
@@ -133,7 +133,7 @@ export type AutoResumeState = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'claude-autoresearch': {
+    'autoresearch': {
       /** Autoresearch mode: gates the tools, the loop and the UI. */
       enabled: boolean
       decisions: ModeDecisions

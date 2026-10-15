@@ -20,7 +20,7 @@ export function registerRuntime(on: On): void {
       await reloadExperiment($)
     } catch (error) {
       // Never block the session on a bad config or log; the mod stays idle.
-      $.ui.log(`claude-autoresearch: could not load the session state: ${error instanceof Error ? error.message : String(error)}`)
+      $.ui.log(`autoresearch: could not load the session state: ${error instanceof Error ? error.message : String(error)}`)
     }
     return next(e)
   })

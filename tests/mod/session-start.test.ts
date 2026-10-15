@@ -2,12 +2,12 @@ import type { On, PluginState } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 // The values the mod writes to `$.state`, captured as they pass beneath it.
-type Written = Partial<PluginState['claude-autoresearch']>
+type Written = Partial<PluginState['autoresearch']>
 
 function captureState(on: On): Written {
   const written: Record<string, unknown> = {}
   on('state.set', ($, e, next) => {
-    if (e.plugin === 'claude-autoresearch') written[e.key] = e.value
+    if (e.plugin === 'autoresearch') written[e.key] = e.value
     return next(e)
   })
   return written as Written

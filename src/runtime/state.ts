@@ -30,45 +30,45 @@ export function defaultAutoResume(): AutoResumeState {
 // enabled
 
 export async function getEnabled($: State$): Promise<boolean> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'enabled' })).value ?? false
+  return (await $.state.get({ plugin: 'autoresearch', key: 'enabled' })).value ?? false
 }
 
 export async function setEnabled($: State$, value: boolean): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'enabled' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'enabled' }, value)
 }
 
 // decisions
 
 export async function getDecisions($: State$): Promise<ModeDecisions> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'decisions' })).value ?? {}
+  return (await $.state.get({ plugin: 'autoresearch', key: 'decisions' })).value ?? {}
 }
 
 export function updateDecisions($: State$, change: (value: ModeDecisions) => ModeDecisions): Promise<ModeDecisions> {
-  return update($, { plugin: 'claude-autoresearch', key: 'decisions' }, value => change(value ?? {}))
+  return update($, { plugin: 'autoresearch', key: 'decisions' }, value => change(value ?? {}))
 }
 
 // paths
 
 export async function getPaths($: State$): Promise<SessionPaths | null> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'paths' })).value ?? null
+  return (await $.state.get({ plugin: 'autoresearch', key: 'paths' })).value ?? null
 }
 
 export async function setPaths($: State$, value: SessionPaths | null): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'paths' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'paths' }, value)
 }
 
 // experiment
 
 export async function getExperiment($: State$): Promise<ExperimentState> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'experiment' })).value ?? createExperimentState()
+  return (await $.state.get({ plugin: 'autoresearch', key: 'experiment' })).value ?? createExperimentState()
 }
 
 export async function setExperiment($: State$, value: ExperimentState): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'experiment' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'experiment' }, value)
 }
 
 export function updateExperiment($: State$, change: (value: ExperimentState) => ExperimentState): Promise<ExperimentState> {
-  return update($, { plugin: 'claude-autoresearch', key: 'experiment' }, value =>
+  return update($, { plugin: 'autoresearch', key: 'experiment' }, value =>
     change(value ?? createExperimentState()),
   )
 }
@@ -76,35 +76,35 @@ export function updateExperiment($: State$, change: (value: ExperimentState) => 
 // running
 
 export async function getRunning($: State$): Promise<RunningExperiment | null> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'running' })).value ?? null
+  return (await $.state.get({ plugin: 'autoresearch', key: 'running' })).value ?? null
 }
 
 export async function setRunning($: State$, value: RunningExperiment | null): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'running' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'running' }, value)
 }
 
 // lastRun
 
 export async function getLastRun($: State$): Promise<LastRunState> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'lastRun' })).value ?? defaultLastRun()
+  return (await $.state.get({ plugin: 'autoresearch', key: 'lastRun' })).value ?? defaultLastRun()
 }
 
 export async function setLastRun($: State$, value: LastRunState): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'lastRun' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'lastRun' }, value)
 }
 
 // autoResume
 
 export async function getAutoResume($: State$): Promise<AutoResumeState> {
-  return (await $.state.get({ plugin: 'claude-autoresearch', key: 'autoResume' })).value ?? defaultAutoResume()
+  return (await $.state.get({ plugin: 'autoresearch', key: 'autoResume' })).value ?? defaultAutoResume()
 }
 
 export async function setAutoResume($: State$, value: AutoResumeState): Promise<void> {
-  await $.state.set({ plugin: 'claude-autoresearch', key: 'autoResume' }, value)
+  await $.state.set({ plugin: 'autoresearch', key: 'autoResume' }, value)
 }
 
 export function updateAutoResume($: State$, change: (value: AutoResumeState) => AutoResumeState): Promise<AutoResumeState> {
-  return update($, { plugin: 'claude-autoresearch', key: 'autoResume' }, value =>
+  return update($, { plugin: 'autoresearch', key: 'autoResume' }, value =>
     change(value ?? defaultAutoResume()),
   )
 }
