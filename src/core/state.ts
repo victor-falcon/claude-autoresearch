@@ -4,9 +4,8 @@
  * `index.ts` `reconstructState` / `buildSessionSnapshot`).
  */
 
-import type { ExperimentState, MetricDirection } from "../../types/index.d.ts";
+import type { ExperimentState, MetricDirection, SessionPaths } from "../../types/index.d.ts";
 import type { FileIO } from "./io.ts";
-import { readTextOrEmpty } from "./io.ts";
 import { DEFAULT_DIRECTION, DEFAULT_METRIC_NAME, DEFAULT_METRIC_UNIT, reconstructJsonlState } from "./jsonl.ts";
 import { computeConfidence, findBaselineMetric, findBestMetric } from "./metrics.ts";
 import { readConfig, maxExperimentsFrom, workDirFrom } from "./config.ts";
@@ -21,7 +20,7 @@ export function createExperimentState(): ExperimentState {
     currentSegment: 0,
     results: [],
     secondaryMetrics: [],
-    bestMetric: null,
+    baselineMetric: null,
     bestKeptMetric: null,
     confidence: null,
     maxExperiments: null,
@@ -36,7 +35,7 @@ export function withDerivedMetrics(state: ExperimentState): ExperimentState {
   const { results, currentSegment, bestDirection } = state;
   return {
     ...state,
-    bestMetric: findBaselineMetric(results, currentSegment),
+    baselineMetric: findBaselineMetric(results, currentSegment),
     bestKeptMetric: findBestMetric(results, currentSegment, bestDirection),
     confidence: computeConfidence(results, currentSegment, bestDirection),
   };
@@ -59,29 +58,31 @@ export function experimentStateFromJsonl(jsonlContent: string, maxExperiments: n
 }
 
 export interface LoadedSession {
-  /** The session's cwd, where the config lives. */
-  cwd: string;
-  /** The effective work dir, where every other session file lives. */
-  workDir: string;
-  /** The log path in effect (current or legacy layout). */
-  logPath: string;
-  /** Whether that log exists on disk. */
-  hasPersistedLog: boolean;
+  paths: SessionPaths;
   state: ExperimentState;
 }
 
-/** Read config and log from disk and rebuild the experiment state. */
+/**
+ * Read config and log from disk and rebuild the experiment state. A log that
+ * exists but cannot be read (e.g. over the mod's 4 MiB read limit) yields the
+ * empty state with `logReadError` set, never a silently empty session.
+ */
 export async function loadSession(io: FileIO, cwd: string): Promise<LoadedSession> {
   const config = await readConfig(io, cwd);
   const workDir = workDirFrom(cwd, config);
   const logPath = await sessionFilePath(io, workDir, "log");
   const hasPersistedLog = await io.exists(logPath);
-  const content = hasPersistedLog ? await readTextOrEmpty(io, logPath) : "";
+  let content = "";
+  let logReadError: string | null = null;
+  if (hasPersistedLog) {
+    try {
+      content = await io.readText(logPath);
+    } catch (error) {
+      logReadError = error instanceof Error ? error.message : String(error);
+    }
+  }
   return {
-    cwd,
-    workDir,
-    logPath,
-    hasPersistedLog,
+    paths: { cwd, workDir, logPath, hasPersistedLog, logReadError },
     state: experimentStateFromJsonl(content, maxExperimentsFrom(config)),
   };
 }
@@ -112,7 +113,7 @@ export function buildSessionSnapshot(state: ExperimentState): SessionSnapshot {
     metric_name: state.metricName,
     metric_unit: state.metricUnit,
     direction: state.bestDirection,
-    baseline_metric: state.bestMetric,
+    baseline_metric: state.baselineMetric,
     best_metric: findBestMetric(state.results, state.currentSegment, state.bestDirection),
     run_count: state.results.length,
     goal: state.name ?? "",

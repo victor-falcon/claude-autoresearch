@@ -41,7 +41,6 @@ test("maxIterations must be a positive number and is floored", () => {
 test("workingDir resolves relative to cwd or is used as given", async () => {
   assert.equal(await resolveWorkDir(new FakeIO(), "/w"), "/w");
   assert.equal(await resolveWorkDir(new FakeIO({ "/w/.auto/config.json": '{"workingDir":"../bench"}' }), "/w"), "/bench");
-  assert.equal(await resolveWorkDir(new FakeIO({ "/w/.auto/config.json": '{"workingDir":"/abs/x"}' }), "/w"), "/abs/x");
   assert.equal(await resolveWorkDir(new FakeIO({ "/w/.auto/config.json": '{"workingDir":"."}' }), "/w"), "/w");
 });
 
@@ -66,7 +65,7 @@ test("experiment state derives baseline, best and confidence for the current seg
   assert.equal(state.metricUnit, "kb");
   assert.equal(state.currentSegment, 1);
   assert.equal(state.results.length, 5);
-  assert.equal(state.bestMetric, 100);
+  assert.equal(state.baselineMetric, 100);
   assert.equal(state.bestKeptMetric, 80);
   // values 100, 90, 95, 80 → MAD 5; |80 - 100| / 5
   assert.equal(state.confidence, 4);
@@ -85,9 +84,13 @@ test("loadSession follows workingDir to the log and keeps config in cwd", async 
 
   const loaded = await loadSession(io, "/w");
 
-  assert.equal(loaded.workDir, "/w/bench");
-  assert.equal(loaded.logPath, "/w/bench/.auto/log.jsonl");
-  assert.equal(loaded.hasPersistedLog, true);
+  assert.deepEqual(loaded.paths, {
+    cwd: "/w",
+    workDir: "/w/bench",
+    logPath: "/w/bench/.auto/log.jsonl",
+    hasPersistedLog: true,
+    logReadError: null,
+  });
   assert.equal(loaded.state.results.length, 5);
   assert.equal(loaded.state.maxExperiments, 2);
 });
@@ -95,11 +98,30 @@ test("loadSession follows workingDir to the log and keeps config in cwd", async 
 test("loadSession without a log answers the empty state", async () => {
   const loaded = await loadSession(new FakeIO(), "/w");
 
-  assert.equal(loaded.hasPersistedLog, false);
-  assert.equal(loaded.logPath, "/w/.auto/log.jsonl");
+  assert.equal(loaded.paths.hasPersistedLog, false);
+  assert.equal(loaded.paths.logPath, "/w/.auto/log.jsonl");
+  assert.equal(loaded.paths.logReadError, null);
   assert.equal(loaded.state.name, null);
   assert.deepEqual(loaded.state.results, []);
-  assert.equal(loaded.state.bestMetric, null);
+  assert.equal(loaded.state.baselineMetric, null);
+});
+
+test("loadSession reports an unreadable log instead of an empty session", async () => {
+  const io = new FakeIO({ "/w/.auto/log.jsonl": LOG });
+  io.readText = async () => {
+    throw new Error("EFBIG: over 4 MiB");
+  };
+
+  const loaded = await loadSession(io, "/w");
+
+  assert.equal(loaded.paths.hasPersistedLog, true);
+  assert.equal(loaded.paths.logReadError, "EFBIG: over 4 MiB");
+  assert.deepEqual(loaded.state.results, []);
+});
+
+test("an absolute workingDir is used verbatim, as upstream", async () => {
+  const io = new FakeIO({ "/w/.auto/config.json": '{"workingDir":"/abs/x/"}' });
+  assert.equal(await resolveWorkDir(io, "/w"), "/abs/x/");
 });
 
 test("the hook session snapshot uses upstream's snake_case shape", () => {

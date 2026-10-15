@@ -12,7 +12,7 @@ Requirements: Node 22.18+ and Claude Code on `PATH` (no API key needed for any o
 
 ```sh
 npm install
-npm run types      # lay the mod API types (.claude-plugin/types/, git-ignored)
+npm run types      # lay the mod API types (.claude-plugin/types/, git-ignored; needed before typecheck)
 npm run typecheck  # tsc over the mod and over the pure core
 npm test           # core unit tests (node --test) + mod tests (claude plugin test)
 npm run validate   # claude plugin validate .

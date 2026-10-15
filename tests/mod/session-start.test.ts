@@ -41,17 +41,24 @@ test('session start rebuilds the experiment state from .auto/log.jsonl', async (
   expect(experiment?.name).toBe('Speed up parser')
   expect(experiment?.metricName).toBe('total_ms')
   expect(experiment?.results.length).toBe(2)
-  expect(experiment?.bestMetric).toBe(100)
+  expect(experiment?.baselineMetric).toBe(100)
   expect(experiment?.bestKeptMetric).toBe(80)
   expect(experiment?.maxExperiments).toBe(5)
   expect(experiment?.secondaryMetrics).toEqual([{ name: 'compile_ms', unit: 'ms' }])
 
-  const mode = state.mode
-  expect(mode?.enabled).toBe(false)
-  expect(mode?.workDir).toBe('/work')
+  expect(state.paths).toEqual({
+    cwd: '/work',
+    workDir: '/work',
+    logPath: '/work/.auto/log.jsonl',
+    hasPersistedLog: true,
+    logReadError: null,
+  })
+  // Auto-activation is the loop module's; the runtime leaves the mode alone.
+  expect(state.enabled).toBe(undefined)
 
-  const running = state.running
-  expect(running).toBe(null)
+  expect(state.running).toBe(null)
+  expect(state.lastRun).toEqual({ checks: null, durationSeconds: null })
+  expect(state.autoResume).toEqual({ turns: 0, experimentsThisSession: 0, pendingResume: null })
 })
 
 test('session start without a log leaves an empty experiment', async ($, on) => {
@@ -65,4 +72,24 @@ test('session start without a log leaves an empty experiment', async ($, on) => 
   const experiment = state.experiment
   expect(experiment?.results).toEqual([])
   expect(experiment?.name).toBe(null)
+})
+
+test('session start still completes when the session files cannot be read', async ($, on) => {
+  const state = captureState(on)
+  on('session.cwd', () => ({ value: '/broken' }))
+  on('fs.exists', () => {
+    throw new Error('EACCES')
+  })
+  on('ui.log', () => ({ value: undefined }))
+  let reachedEngine = false
+  on('session.start', ($, e) => {
+    reachedEngine = true
+    return { cwd: e.cwd }
+  })
+
+  await $.session.start({ cwd: '/broken', surface: null, isInteractive: false })
+
+  expect(reachedEngine).toBe(true)
+  expect(state.running).toBe(null)
+  expect(state.experiment).toBe(undefined)
 })

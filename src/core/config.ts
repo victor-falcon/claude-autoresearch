@@ -6,7 +6,7 @@
 
 import type { FileIO } from "./io.ts";
 import { sessionFilePath } from "./paths.ts";
-import { resolve } from "./pathutil.ts";
+import { isAbsolute, resolve } from "./pathutil.ts";
 
 export interface AutoresearchConfig {
   maxIterations?: number;
@@ -41,7 +41,7 @@ export async function readMaxExperiments(io: FileIO, cwd: string): Promise<numbe
 /** `cwd`, or `workingDir` resolved against it (absolute paths used as given). */
 export function workDirFrom(cwd: string, config: AutoresearchConfig): string {
   if (!config.workingDir) return cwd;
-  return resolve(cwd, config.workingDir);
+  return isAbsolute(config.workingDir) ? config.workingDir : resolve(cwd, config.workingDir);
 }
 
 /** The effective working directory for the session files. */

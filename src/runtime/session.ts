@@ -7,18 +7,13 @@ import { resolveWorkDir } from '../core/config.ts'
 import { sessionFilePath, type SessionFileKind } from '../core/paths.ts'
 import { loadSession, type LoadedSession } from '../core/state.ts'
 import { fsIo } from './fs.ts'
-import { defaultAutoResume, defaultLastRun, getMode, setAutoResume, setExperiment, setLastRun, setMode, setRunning } from './state.ts'
+import { defaultAutoResume, defaultLastRun, setAutoResume, setExperiment, setLastRun, setPaths, setRunning } from './state.ts'
 
 type Session$ = Pick<EngineInterface, 'fs' | 'session' | 'state'>
 
-/** The session's cwd, where `.auto/config.json` is read. */
-export function sessionCwd($: Pick<EngineInterface, 'session'>): Promise<string> {
-  return $.session.cwd()
-}
-
-/** The effective work dir: `workingDir` from config, else the cwd. */
+/** The effective work dir: `workingDir` from config, else the session's cwd. */
 export async function sessionWorkDir($: Pick<EngineInterface, 'fs' | 'session'>): Promise<string> {
-  return resolveWorkDir(fsIo($), await sessionCwd($))
+  return resolveWorkDir(fsIo($), await $.session.cwd())
 }
 
 /** The path in effect for one session file (current or legacy layout). */
@@ -26,15 +21,11 @@ export async function sessionFile($: Pick<EngineInterface, 'fs' | 'session'>, ki
   return sessionFilePath(fsIo($), await sessionWorkDir($), kind)
 }
 
-/**
- * Rebuild the experiment state from disk, store it in `$.state`, and record
- * the cwd/work dir on the mode value (leaving `enabled` as it is).
- */
+/** Rebuild the experiment state and the session paths from disk into `$.state`. */
 export async function reloadExperiment($: Session$): Promise<LoadedSession> {
-  const loaded = await loadSession(fsIo($), await sessionCwd($))
+  const loaded = await loadSession(fsIo($), await $.session.cwd())
   await setExperiment($, loaded.state)
-  const mode = await getMode($)
-  await setMode($, { ...mode, cwd: loaded.cwd, workDir: loaded.workDir })
+  await setPaths($, loaded.paths)
   return loaded
 }
 

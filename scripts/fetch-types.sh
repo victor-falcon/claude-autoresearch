@@ -19,12 +19,13 @@ trap 'rm -rf "$tmp"' EXIT
 (
   cd "$tmp"
   CLAUDE_CODE_TMPDIR="$tmp/tmp" CLAUDE_CONFIG_DIR="$tmp/config" ANTHROPIC_API_KEY=dummy-no-model-call \
-    $claude_bin -p "/plugin-authoring" >/dev/null 2>&1 || true
+    $claude_bin -p "/plugin-authoring" >"$tmp/claude.log" 2>&1 || true
 )
 
-types="$(find "$tmp/tmp" -name claude-code.d.ts -path '*plugin-authoring/types/*' | head -n 1)"
+types="$(find "$tmp/tmp" -name claude-code.d.ts -path '*plugin-authoring/types/*' 2>/dev/null | head -n 1 || true)"
 if [[ -z "$types" ]]; then
-  echo "fetch-types: Claude Code did not write claude-code.d.ts" >&2
+  echo "fetch-types: Claude Code did not write claude-code.d.ts; its output:" >&2
+  cat "$tmp/claude.log" >&2
   exit 1
 fi
 

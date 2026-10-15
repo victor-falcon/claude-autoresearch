@@ -60,7 +60,7 @@ export type ExperimentState = {
   /** Secondary metric definitions for the current segment, in first-seen order. */
   secondaryMetrics: MetricDef[]
   /** Baseline primary metric: the first run of the current segment. */
-  bestMetric: number | null
+  baselineMetric: number | null
   /** Best kept primary metric of the current segment. */
   bestKeptMetric: number | null
   /** Best improvement over baseline as a multiple of the noise floor (MAD). */
@@ -69,19 +69,29 @@ export type ExperimentState = {
   maxExperiments: number | null
 }
 
-/** Whether autoresearch mode is on, and for which directories. */
-export type AutoresearchModeState = {
-  enabled: boolean
+/**
+ * Where the session files are, as resolved when the experiment state was last
+ * reloaded (session start, or `reloadExperiment`). A snapshot: re-resolve
+ * after editing `.auto/config.json`.
+ */
+export type SessionPaths = {
   /** The session's cwd, where `.auto/config.json` is read. */
-  cwd: string | null
+  cwd: string
   /** The effective work dir (`workingDir` from config, else `cwd`). */
-  workDir: string | null
-  /**
-   * Explicit `/autoresearch on|off` decisions recorded this session, by
-   * canonical work dir. A recorded decision wins over auto-activation.
-   */
-  decisions: Record<string, boolean>
+  workDir: string
+  /** The log in effect (`.auto/log.jsonl`, or legacy `autoresearch.jsonl`). */
+  logPath: string
+  /** Whether that log existed at the reload. */
+  hasPersistedLog: boolean
+  /** Why an existing log could not be read (e.g. over 4 MiB); null when read. */
+  logReadError: string | null
 }
+
+/**
+ * Explicit `/autoresearch on|off` decisions recorded this session, by
+ * canonical work dir. A recorded decision wins over auto-activation.
+ */
+export type ModeDecisions = Record<string, boolean>
 
 /** The experiment `run_experiment` is running right now. */
 export type RunningExperiment = {
@@ -105,20 +115,30 @@ export type LastRunState = {
   durationSeconds: number | null
 }
 
+/** A resume prompt waiting for the agent to settle. */
+export type PendingResume = {
+  message: string
+  /** Milliseconds since the epoch when it may be sent. */
+  dueAt: number
+}
+
 /** Auto-resume bookkeeping for the continuous loop. */
 export type AutoResumeState = {
   /** Resume prompts sent this session (capped by AUTORESUME_TURN_LIMIT). */
   turns: number
   /** Experiments logged this session; a chat-only turn never auto-resumes. */
   experimentsThisSession: number
-  /** Resume message waiting for the agent to settle; null when none. */
-  pendingMessage: string | null
+  pendingResume: PendingResume | null
 }
 
 declare module 'claude-code' {
   interface PluginState {
     'claude-autoresearch': {
-      mode: AutoresearchModeState
+      /** Autoresearch mode: gates the tools, the loop and the UI. */
+      enabled: boolean
+      decisions: ModeDecisions
+      /** null until the first reload. */
+      paths: SessionPaths | null
       experiment: ExperimentState
       running: RunningExperiment | null
       lastRun: LastRunState
