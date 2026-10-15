@@ -6,13 +6,19 @@ import type { Register } from 'claude-code'
 import { registerCommand } from '../src/command/index.ts'
 import { registerExport } from '../src/export/index.ts'
 import { registerLoop } from '../src/loop/index.ts'
-import { registerRuntime } from '../src/runtime/index.ts'
-import { registerTools } from '../src/tools/index.ts'
+import { startRuntime } from '../src/runtime/index.ts'
+import { registerTools, startTools } from '../src/tools/index.ts'
 import { registerUi } from '../src/ui/index.ts'
 
 export const register: Register = on => {
-  // First registered is outermost: the runtime loads state before the features.
-  registerRuntime(on)
+  // A module may hook session.start only once without a matcher, so it lives
+  // here: the runtime loads the state first, then each feature's start work.
+  on('session.start', async ($, e, next) => {
+    await startRuntime($)
+    await startTools($)
+    return next(e)
+  })
+
   registerTools(on)
   registerCommand(on)
   registerLoop(on)
