@@ -11,8 +11,9 @@
   "scripts": {
     "types": "scripts/fetch-types.sh",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.core.json",
-    "test": "npm run test:core && npm run test:mod",
+    "test": "npm run test:core && npm run test:finalize && npm run test:mod",
     "test:core": "node --test --experimental-strip-types 'tests/core/**/*.spec.ts'",
+    "test:finalize": "bash tests/finalize_test.sh",
     "test:mod": "${CLAUDE_BIN:-claude} plugin test .",
     "validate": "${CLAUDE_BIN:-claude} plugin validate ."
   },

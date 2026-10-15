@@ -40,6 +40,9 @@ jobs:
       - name: Core tests
         run: npm run test:core
 
+      - name: Finalize script tests
+        run: npm run test:finalize
+
       - name: Mod tests
         run: npm run test:mod
 
