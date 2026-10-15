@@ -1,0 +1,23 @@
+{
+  "name": "claude-autoresearch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous experiment loop for Claude Code (dev tooling only; the mod has no runtime dependencies).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "types": "scripts/fetch-types.sh",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.core.json",
+    "test": "npm run test:core && npm run test:mod",
+    "test:core": "node --test --experimental-strip-types 'tests/core/**/*.spec.ts'",
+    "test:mod": "${CLAUDE_BIN:-claude} plugin test .",
+    "validate": "${CLAUDE_BIN:-claude} plugin validate ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}

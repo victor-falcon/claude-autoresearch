@@ -1,0 +1,11 @@
+{
+  "name": "claude-autoresearch",
+  "version": "0.1.0",
+  "description": "Autonomous experiment loop for Claude Code: try an idea, benchmark it, keep or revert, repeat. A port of pi-autoresearch.",
+  "author": { "name": "Víctor Falcón" },
+  "homepage": "https://github.com/victor-falcon/claude-autoresearch",
+  "repository": "https://github.com/victor-falcon/claude-autoresearch",
+  "license": "MIT",
+  "keywords": ["autoresearch", "experiment", "benchmark", "optimization"],
+  "types": "./types/index.d.ts"
+}
