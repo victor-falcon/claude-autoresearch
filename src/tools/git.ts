@@ -3,6 +3,7 @@
 
 import type { EngineInterface } from 'claude-code'
 
+import type { ExperimentStatus } from '../../types/index.d.ts'
 import { AUTO_DIR } from '../core/paths.ts'
 
 type Git$ = Pick<EngineInterface, 'process'>
@@ -12,7 +13,7 @@ const GIT_TIMEOUT_MS = 10_000
 /** The commit message: the description, then a `Result:` JSON trailer. */
 export function commitMessage(
   description: string,
-  status: string,
+  status: ExperimentStatus,
   metricName: string,
   metric: number,
   metrics: Record<string, number>,
@@ -65,17 +66,21 @@ export async function commitAll($: Git$, workDir: string, message: string): Prom
 
 /**
  * Upstream's revert: restore tracked files and remove untracked ones, except
- * the session files (`.auto/` and legacy `autoresearch.*`) at any depth.
+ * the session files (`.auto/` and legacy `autoresearch.*`) at any depth. A
+ * failed checkout ends the script with its status, so it is reported.
  */
 export const REVERT_SCRIPT = `
-            git checkout -- . ':(exclude,glob)**/${AUTO_DIR}' ':(exclude,glob)**/${AUTO_DIR}/**' ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**'
+            git checkout -- . ':(exclude,glob)**/${AUTO_DIR}' ':(exclude,glob)**/${AUTO_DIR}/**' ':(exclude,glob)**/autoresearch.*' ':(exclude,glob)**/autoresearch.*/**' || exit $?
             git clean -fd -e '${AUTO_DIR}' -e '**/${AUTO_DIR}/**' -e 'autoresearch.*' -e '**/autoresearch.*/**' 2>/dev/null
           `
 
 /** Revert the working tree in `workDir`; answers the line for the tool result. */
-export async function revertChanges($: Git$, workDir: string, status: string): Promise<string> {
+export async function revertChanges($: Git$, workDir: string, status: ExperimentStatus): Promise<string> {
   try {
-    await $.process.run(['bash', '-c', REVERT_SCRIPT], { cwd: workDir, timeoutMs: GIT_TIMEOUT_MS })
+    const revert = await $.process.run(['bash', '-c', REVERT_SCRIPT], { cwd: workDir, timeoutMs: GIT_TIMEOUT_MS })
+    if (revert.exitCode !== 0) {
+      return `⚠️ Git revert failed (exit ${revert.exitCode}): ${output(revert).slice(0, 200)} — the discarded changes may still be in the working tree`
+    }
     return `📝 Git: reverted changes (${status}) — autoresearch files preserved`
   } catch (error) {
     return `⚠️ Git revert failed: ${error instanceof Error ? error.message : String(error)}`

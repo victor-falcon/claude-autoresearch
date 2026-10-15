@@ -19,7 +19,7 @@ import {
   formatSize,
   truncateTail,
 } from './output.ts'
-import { beginExperimentRun, endExperimentRun, runCommand } from './process.ts'
+import { beginExperimentRun, endExperimentRun, runCommand, shellQuote } from './process.ts'
 
 type Run$ = Pick<EngineInterface, 'fs' | 'session' | 'state' | 'process' | 'clock' | 'env'>
 
@@ -29,13 +29,14 @@ export type RunParams = {
   checks_timeout_seconds?: number
 }
 
+const DEFAULT_TIMEOUT_SECONDS = 600
+const DEFAULT_CHECKS_TIMEOUT_SECONDS = 300
+/** How much checks output the model sees when checks fail. */
+const CHECKS_TAIL_LINES = 80
+
 /** The most of a run's output kept for the full-output file: ≤ 4 MiB, $.fs's write limit, at 4 bytes a character. */
 const FULL_OUTPUT_MAX_CHARS = 1_000_000
 const CHECKS_OUTPUT_MAX_BYTES = 1024 * 1024
-
-function shellQuote(text: string): string {
-  return `'${text.replaceAll("'", `'\\''`)}'`
-}
 
 function randomId(): string {
   let id = ''
@@ -78,6 +79,7 @@ async function runChecks($: Run$, checksPath: string, workDir: string, timeoutMs
 }
 
 export async function runExperiment($: Run$, params: RunParams, toolSignal?: AbortSignal): Promise<string> {
+  if (typeof params.command !== 'string' || params.command.trim() === '') return '❌ command is required.'
   const io = fsIo($)
   const cwd = await $.session.cwd()
   const workDirError = await validateWorkDir(io, cwd)
@@ -111,7 +113,7 @@ export async function runExperiment($: Run$, params: RunParams, toolSignal?: Abo
     const outcome = await runCommand($, {
       command: params.command,
       cwd: workDir,
-      timeoutMs: (params.timeout_seconds ?? 600) * 1000,
+      timeoutMs: (params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
       signal,
       onOutput: (_stream, text) => {
         tail.push(text)
@@ -134,7 +136,7 @@ export async function runExperiment($: Run$, params: RunParams, toolSignal?: Abo
     let checks: ChecksOutcome | null = null
     const checksPath = await sessionFilePath(io, workDir, 'checks')
     if (benchmarkPassed && (await io.exists(checksPath))) {
-      checks = await runChecks($, checksPath, workDir, (params.checks_timeout_seconds ?? 300) * 1000, signal)
+      checks = await runChecks($, checksPath, workDir, (params.checks_timeout_seconds ?? DEFAULT_CHECKS_TIMEOUT_SECONDS) * 1000, signal)
       if (signal.aborted) {
         return `🛑 Experiment aborted while running .auto/checks.sh. Nothing was measured; do not log this run.`
       }
@@ -147,13 +149,13 @@ export async function runExperiment($: Run$, params: RunParams, toolSignal?: Abo
     const output = tail.toString()
     const llm = truncateTail(output, EXPERIMENT_MAX_LINES, EXPERIMENT_MAX_BYTES)
     let fullOutputPath: string | undefined
-    if (tail.totalBytes > EXPERIMENT_MAX_BYTES || output.split('\n').length > EXPERIMENT_MAX_LINES) {
+    if (tail.totalBytes > EXPERIMENT_MAX_BYTES || llm.totalLines > EXPERIMENT_MAX_LINES) {
       fullOutputPath = await writeFullOutput($, (fullDropped ? '[…earlier output dropped]\n' : '') + full)
     }
 
     const metrics = parseMetricLines(output)
     const parsedPrimary = metrics.get(state.metricName) ?? null
-    const checksOutput = checks ? checks.output.split('\n').slice(-80).join('\n') : ''
+    const checksOutput = checks ? checks.output.split('\n').slice(-CHECKS_TAIL_LINES).join('\n') : ''
 
     let text = ''
     if (outcome.timedOut) {

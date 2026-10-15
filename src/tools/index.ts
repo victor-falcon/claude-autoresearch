@@ -4,20 +4,11 @@ import { getEnabled } from '../runtime/state.ts'
 import { initExperiment, type InitParams } from './init.ts'
 import { logExperiment, type LogParams } from './log.ts'
 import { runExperiment, type RunParams } from './run.ts'
-import { INACTIVE_MESSAGE, INACTIVE_NOTE, TOOL_NAMES, TOOL_PATTERN, TOOL_SPECS, toolNameOf, type ToolName } from './specs.ts'
+import { INACTIVE_MESSAGE, INACTIVE_NOTE, PLUGIN, TOOL_NAMES, TOOL_PATTERN, TOOL_SPECS, toolNameOf, type ToolName } from './specs.ts'
 
 export { fireHook, runHook, steerMessageFor, steerSection } from './hooks.ts'
 export type { AfterHookPayload, BeforeHookPayload, HookPayload, HookResult } from './hooks.ts'
 export { abortRunningExperiment } from './process.ts'
-
-/**
- * Re-describe the tools after `enabled` changed, so the model's tool list
- * follows the mode from the next turn on. Called on every write of
- * `enabled`; exported for a caller that wants it explicitly.
- */
-export function syncToolGating($: Pick<EngineInterface, 'ui'>): void {
-  $.ui.invalidate('tool.describe')
-}
 
 type Tool$ = Parameters<typeof initExperiment>[0] &
   Parameters<typeof runExperiment>[0] &
@@ -27,6 +18,16 @@ type Tool$ = Parameters<typeof initExperiment>[0] &
 function argsOf<T>(e: Record<string, unknown>): T {
   const { tool: _tool, tool_use_id: _id, ...args } = e
   return args as T
+}
+
+// One tool call at a time: each reads, changes and writes the experiment
+// state and the working tree, so parallel calls would interleave.
+let toolQueue: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const done = toolQueue.then(work, work)
+  toolQueue = done.catch(() => undefined)
+  return done
 }
 
 function runTool($: Tool$, name: ToolName, e: Record<string, unknown>, signal: AbortSignal): Promise<string> {
@@ -67,7 +68,8 @@ export async function startTools($: Pick<EngineInterface, 'tool' | 'ui'>): Promi
 export function registerTools(on: On): void {
   on('state.set', async ($, e, next) => {
     const result = await next(e)
-    if (e.plugin === 'autoresearch' && e.key === 'enabled' && e.value !== e.previous) syncToolGating($)
+    // Re-describe the tools so the model's tool list follows the mode.
+    if (e.plugin === PLUGIN && e.key === 'enabled' && e.value !== e.previous) $.ui.invalidate('tool.describe')
     return result
   }).catch(($, e, next) => next(e))
 
@@ -82,7 +84,7 @@ export function registerTools(on: On): void {
     if (!name) return next(e)
     if (!(await getEnabled($))) return { result: INACTIVE_MESSAGE }
     try {
-      return { result: await runTool($, name, e as Record<string, unknown>, next.signal) }
+      return { result: await serialized(() => runTool($, name, e as Record<string, unknown>, next.signal)) }
     } catch (error) {
       return { deny: `${name} failed: ${error instanceof Error ? error.message : String(error)}` }
     }

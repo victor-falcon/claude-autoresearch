@@ -7,9 +7,9 @@ import type { EngineInterface } from 'claude-code'
 import type { ExperimentAsi, ExperimentResult, ExperimentState, ExperimentStatus } from '../../types/index.d.ts'
 import { resolveWorkDir, validateWorkDir } from '../core/config.ts'
 import { registerSecondaryMetrics, serializeRunEntry } from '../core/jsonl.ts'
-import { currentResults, describeConfidence, findBaselineSecondary, formatNum } from '../core/metrics.ts'
+import { describeConfidence, findBaselineSecondary, formatNum } from '../core/metrics.ts'
 import { sessionFilePath } from '../core/paths.ts'
-import { buildSessionSnapshot, withDerivedMetrics } from '../core/state.ts'
+import { buildSessionSnapshot, isIterationLimitReached, segmentRunCount, withDerivedMetrics } from '../core/state.ts'
 import { appendText, canonicalDir, fsIo } from '../runtime/fs.ts'
 import {
   defaultLastRun,
@@ -76,13 +76,17 @@ export function withResult(state: ExperimentState, result: ExperimentResult): { 
   registerSecondaryMetrics(secondaryMetrics, result.metrics)
   const next = withDerivedMetrics({ ...state, results: [...state.results, result], secondaryMetrics })
   const logged = { ...result, confidence: next.confidence }
-  next.results[next.results.length - 1] = logged
-  return { state: next, result: logged }
+  return { state: withLastResult(next, logged), result: logged }
+}
+
+/** The state with its last result replaced (e.g. by the committed hash). */
+function withLastResult(state: ExperimentState, result: ExperimentResult): ExperimentState {
+  return { ...state, results: [...state.results.slice(0, -1), result] }
 }
 
 /** The result summary upstream shows, before the git and limit notes. */
 export function resultSummary(state: ExperimentState, result: ExperimentResult): string {
-  const segmentCount = currentResults(state.results, state.currentSegment).length
+  const segmentCount = segmentRunCount(state)
   const baseline = state.baselineMetric
   let text = `Logged #${state.results.length}: ${result.status} — ${result.description}`
 
@@ -127,10 +131,24 @@ export function resultSummary(state: ExperimentState, result: ExperimentResult):
   return text
 }
 
-export async function logExperiment($: Log$, params: LogParams): Promise<string> {
+/** Why the arguments can't be logged; null when they can. */
+function paramsError(params: LogParams): string | null {
   if (!STATUSES.includes(params.status)) {
     return `❌ Invalid status "${String(params.status)}". Use one of: ${STATUSES.join(', ')}.`
   }
+  if (typeof params.metric !== 'number' || !Number.isFinite(params.metric)) {
+    return '❌ metric must be a finite number (use 0 for crashes).'
+  }
+  if (typeof params.description !== 'string') return '❌ description must be a string.'
+  const metrics = Object.entries(params.metrics ?? {})
+  const invalid = metrics.filter(([, value]) => typeof value !== 'number' || !Number.isFinite(value))
+  if (invalid.length > 0) return `❌ Secondary metrics must be finite numbers: ${invalid.map(([name]) => name).join(', ')}`
+  return null
+}
+
+export async function logExperiment($: Log$, params: LogParams): Promise<string> {
+  const invalid = paramsError(params)
+  if (invalid) return invalid
   const io = fsIo($)
   const cwd = await $.session.cwd()
   const workDirError = await validateWorkDir(io, cwd)
@@ -164,8 +182,7 @@ export async function logExperiment($: Log$, params: LogParams): Promise<string>
     confidence: null,
     ...(asi ? { asi } : {}),
   })
-  const { state } = added
-  let { result } = added
+  let { state, result } = added
   await updateAutoResume($, value => ({ ...value, experimentsThisSession: value.experimentsThisSession + 1 }))
 
   let text = resultSummary(state, result)
@@ -175,8 +192,10 @@ export async function logExperiment($: Log$, params: LogParams): Promise<string>
     const message = commitMessage(params.description, params.status, state.metricName, params.metric, secondary)
     const commit = await commitAll($, workDir, message)
     text += `\n${commit.note}`
-    if (commit.sha) result = { ...result, commit: commit.sha }
-    state.results[state.results.length - 1] = result
+    if (commit.sha) {
+      result = { ...result, commit: commit.sha }
+      state = withLastResult(state, result)
+    }
   }
 
   try {
@@ -200,8 +219,7 @@ export async function logExperiment($: Log$, params: LogParams): Promise<string>
   await setLastRun($, defaultLastRun())
 
   let beforeSteer: string | null = null
-  const segmentCount = currentResults(state.results, state.currentSegment).length
-  if (state.maxExperiments !== null && segmentCount >= state.maxExperiments) {
+  if (isIterationLimitReached(state)) {
     text += `\n\n🛑 Maximum experiments reached (${state.maxExperiments}). STOP the experiment loop now.`
     // As upstream: the loop is over, so the mode goes off for this work dir.
     const workDirKey = await canonicalDir($, workDir)

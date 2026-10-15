@@ -9,7 +9,7 @@ import { hookScriptPath, sessionFilePath, type HookStage } from '../core/paths.t
 import type { SessionSnapshot } from '../core/state.ts'
 import { appendText, fsIo } from '../runtime/fs.ts'
 import { cutAtBoundary } from './output.ts'
-import { runCommand } from './process.ts'
+import { runCommand, shellQuote } from './process.ts'
 
 type Hook$ = Pick<EngineInterface, 'fs' | 'process' | 'clock'>
 
@@ -52,10 +52,6 @@ async function isExecutableFile($: Hook$, path: string): Promise<boolean> {
   if (stat?.kind !== 'file') return false
   const test = await $.process.run(['test', '-x', path]).catch(() => undefined)
   return test?.exitCode === 0
-}
-
-function shellQuote(text: string): string {
-  return `'${text.replaceAll("'", `'\\''`)}'`
 }
 
 /**

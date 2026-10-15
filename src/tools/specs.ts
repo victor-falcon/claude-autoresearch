@@ -11,13 +11,14 @@ export const PLUGIN = 'autoresearch'
 export const TOOL_NAMES = ['init_experiment', 'run_experiment', 'log_experiment'] as const
 export type ToolName = (typeof TOOL_NAMES)[number]
 
+const TOOL_PREFIX = `mcp__${PLUGIN}__`
+
 /** Matches the names the model calls the tools by, `mcp__autoresearch__<name>`. */
-export const TOOL_PATTERN = /^mcp__autoresearch__(init|run|log)_experiment$/
+export const TOOL_PATTERN = new RegExp(`^${TOOL_PREFIX}(${TOOL_NAMES.join('|')})$`)
 
 /** The tool's short name from the name the model called it by; null for another tool. */
 export function toolNameOf(qualified: string): ToolName | null {
-  const name = qualified.slice(`mcp__${PLUGIN}__`.length)
-  return qualified.startsWith(`mcp__${PLUGIN}__`) && (TOOL_NAMES as readonly string[]).includes(name) ? (name as ToolName) : null
+  return (TOOL_PATTERN.exec(qualified)?.[1] as ToolName | undefined) ?? null
 }
 
 function describe(summary: string, guidelines: string[]): string {

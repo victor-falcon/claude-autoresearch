@@ -5,6 +5,11 @@ import type { EngineInterface } from 'claude-code'
 
 type Process$ = Pick<EngineInterface, 'process' | 'clock'>
 
+/** `text` as one single-quoted shell word. */
+export function shellQuote(text: string): string {
+  return `'${text.replaceAll("'", `'\\''`)}'`
+}
+
 /**
  * Runs `$1` in its own process group (`set -m` puts the background job in a
  * group of its own) and forwards a TERM/INT/HUP to that whole group, so

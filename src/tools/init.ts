@@ -37,6 +37,9 @@ export function initializedState(state: ExperimentState, params: InitParams, max
 }
 
 export async function initExperiment($: Init$, params: InitParams): Promise<string> {
+  if (typeof params.name !== 'string' || typeof params.metric_name !== 'string') {
+    return '❌ name and metric_name are required strings.'
+  }
   const io = fsIo($)
   const cwd = await $.session.cwd()
   const workDirError = await validateWorkDir(io, cwd)
