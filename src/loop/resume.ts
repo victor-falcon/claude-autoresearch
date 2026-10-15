@@ -19,6 +19,7 @@ let timer: Timer | null = null
 let runningTurnId: string | null = null
 /** Prompts held until the running turn ends (an aborted turn never drains a queue). */
 let afterTurn: string[] = []
+let compacting = false
 
 /** The main loop's turn in flight (its `turn.start` id), or null when idle. */
 export function runningTurn(): string | null {
@@ -27,6 +28,15 @@ export function runningTurn(): string | null {
 
 export function setRunningTurn(turnId: string | null): void {
   runningTurnId = turnId
+}
+
+/** Set while the conversation is being compacted; its end reschedules. */
+export function setCompacting(value: boolean): void {
+  compacting = value
+}
+
+function isBusy(): boolean {
+  return runningTurnId !== null || compacting
 }
 
 function submitSoon($: Pick<EngineInterface, 'clock' | 'prompt' | 'ui'>, text: string): void {
@@ -85,8 +95,8 @@ export async function sendPendingResumeIfReady($: Resume$): Promise<void> {
     await cancelPendingResume($)
     return
   }
-  // A turn is running: its end reschedules the pending prompt.
-  if (runningTurnId !== null) return
+  // A turn or a compaction is running: its end reschedules the pending prompt.
+  if (isBusy()) return
   const reason = await stopReason($)
   if (reason !== null) {
     await cancelPendingResume($)
@@ -94,7 +104,7 @@ export async function sendPendingResumeIfReady($: Resume$): Promise<void> {
     return
   }
   // A turn may have started during the reads above: its end reschedules.
-  if (runningTurnId !== null) return
+  if (isBusy()) return
   await updateAutoResume($, value => ({ ...value, pendingResume: null, turns: value.turns + 1 }))
   // Queued by the engine until the session is idle; resolves as its turn starts.
   $.prompt.submit({ text: pending.message }).catch(error => $.ui.log(`autoresearch: could not send the resume prompt: ${messageOf(error)}`))

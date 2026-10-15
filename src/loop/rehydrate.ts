@@ -8,6 +8,7 @@ import type { EngineInterface } from 'claude-code'
 import { composeCompactionResumeMessage } from '../core/autoresume.ts'
 import { buildAutoresearchCompactionSummary } from '../core/compaction.ts'
 import { fsIo, sessionWorkDir } from '../runtime/index.ts'
+import { withModeGuidance } from './prompt.ts'
 
 const RECENT_COMMIT_LIMIT = 10
 
@@ -25,5 +26,6 @@ async function recentCommits($: Pick<EngineInterface, 'process'>, workDir: strin
 export async function composeRehydrationMessage($: Pick<EngineInterface, 'fs' | 'session' | 'process'>): Promise<string> {
   const workDir = await sessionWorkDir($)
   const summary = await buildAutoresearchCompactionSummary(fsIo($), workDir)
-  return [summary, await recentCommits($, workDir), composeCompactionResumeMessage()].filter(Boolean).join('\n\n')
+  const message = [summary, await recentCommits($, workDir), composeCompactionResumeMessage()].filter(Boolean).join('\n\n')
+  return withModeGuidance($, message)
 }

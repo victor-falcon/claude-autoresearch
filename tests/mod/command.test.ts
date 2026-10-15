@@ -42,9 +42,11 @@ test('/autoresearch <text> with .auto/prompt.md resumes with the text, before.sh
   expect(text).toBe('Autoresearch mode ON — rules loaded from .auto/prompt.md')
   expect(world.state.enabled).toBe(true)
   expect(world.state.decisions).toEqual({ '/repo': true })
-  expect(host.submitted).toEqual([
-    'focus on the parser\n\nAutoresearch mode active. go faster Be careful not to overfit to the benchmarks and do not cheat on the benchmarks.',
-  ])
+  // The system prompt has not carried the mode's section yet, so the prompt does.
+  expect(host.submitted.length).toBe(1)
+  expect(host.submitted[0]).toStartWith(
+    'focus on the parser\n\nAutoresearch mode active. go faster Be careful not to overfit to the benchmarks and do not cheat on the benchmarks.\n\n## Autoresearch Mode (ACTIVE)',
+  )
   expect(hookInput).toMatchObject({ event: 'before', cwd: '/repo', next_run: 2, last_run: { run: 1, description: 'baseline' } })
   expect(hookInput).toMatchObject({ session: { metric_name: 'total_ms', run_count: 1, goal: 'Speed up' } })
 })
@@ -58,6 +60,11 @@ test('/autoresearch <text> without .auto/prompt.md has the model load the create
 
   const text = await autoresearch($, 'optimize   test runtime')
   expect(text).toBe('Autoresearch mode ON — no .auto/prompt.md found, loading autoresearch-create skill')
+  // Once `prompt.compose` carries the section, the kickoff is the bare skill invocation.
+  await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] })
+  host.submitted.length = 0
+  await autoresearch($, 'off')
+  await autoresearch($, 'optimize   test runtime')
   expect(host.submitted).toEqual([
     'Use the Skill tool to load the `autoresearch:autoresearch-create` skill and follow it.\n' +
       'Arguments: optimize test runtime Be careful not to overfit to the benchmarks and do not cheat on the benchmarks.',

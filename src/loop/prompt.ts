@@ -6,6 +6,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { BENCHMARK_GUARDRAIL } from '../core/autoresume.ts'
 import { sessionFile } from '../runtime/index.ts'
+import { hasComposeHook } from './bypass.ts'
 
 export const PROMPT_SECTION_ID = 'autoresearch:mode'
 
@@ -52,4 +53,12 @@ export async function modeSection($: Pick<EngineInterface, 'fs' | 'session'>): P
     ideasPath: await existing('ideas'),
     checksPath: await existing('checks'),
   })
+}
+
+/**
+ * A prompt of the plugin's own, with the section appended unless the system
+ * prompt is known to carry it (`prompt.compose` bypassed, or not run yet).
+ */
+export async function withModeGuidance($: Pick<EngineInterface, 'fs' | 'session'>, text: string): Promise<string> {
+  return hasComposeHook() ? text : `${text}\n\n${await modeSection($)}`
 }

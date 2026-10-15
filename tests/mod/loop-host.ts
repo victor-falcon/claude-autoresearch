@@ -20,13 +20,17 @@ export class LoopHost {
   readonly toasts: string[] = []
   readonly aborted: string[] = []
   readonly registered: { name: string; immediate?: true }[] = []
+  /** How long the engine's compaction takes, on the mock clock. */
+  compactionMs = 0
+  /** How many messages the transcript holds (a compaction shrinks it). */
+  messageCount = 1
 
   constructor(readonly world: World) {}
 
   install(on: On, options: { enabled?: boolean } = {}): void {
     on('prompt.submit', ($, e) => {
       this.submitted.push(e.text)
-      return { text: e.text }
+      return { text: e.text, ...(e.context ? { context: e.context } : {}) }
     })
     on('ui.toast', ($, e) => {
       this.toasts.push(e.text)
@@ -42,7 +46,11 @@ export class LoopHost {
     })
     on('turn.start', ($, e) => ({ turnId: e.turnId }))
     on('turn.complete', ($, e) => ({ text: e.answer }))
-    on('session.compact', () => ({ messages: [SUMMARY] }))
+    on('session.compact', async () => {
+      if (this.compactionMs > 0) await this.world.clock.sleep(this.compactionMs)
+      return { messages: [SUMMARY] }
+    })
+    on('session.messages', () => ({ value: Array.from({ length: this.messageCount }, () => SUMMARY) }))
     on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' as const }] }))
     this.world.install(on, options)
     settle = () => this.world.clock.advance(0)

@@ -10,6 +10,7 @@ import { sessionFileCandidates } from '../core/paths.ts'
 import { relative } from '../core/pathutil.ts'
 import { buildSessionSnapshot } from '../core/state.ts'
 import { recordActivation, resetLoopRuntime, stopAutoresearchLoop } from '../loop/mode.ts'
+import { withModeGuidance } from '../loop/prompt.ts'
 import { submitWhenIdle } from '../loop/resume.ts'
 import { reloadExperiment, sessionFile, sessionWorkDir } from '../runtime/index.ts'
 import { getEnabled, getExperiment, setEnabled, updateAutoResume } from '../runtime/state.ts'
@@ -111,7 +112,8 @@ export async function activateAutoresearch($: EngineInterface, args: string): Pr
 
   // Upstream prepends the hook's output only when prompt.md exists, so a new
   // session's kickoff stays the skill invocation.
-  submitWhenIdle($, activationSteer && rulesLoaded ? `${activationSteer}\n\n${kickoff}` : kickoff)
+  const message = activationSteer && rulesLoaded ? `${activationSteer}\n\n${kickoff}` : kickoff
+  submitWhenIdle($, await withModeGuidance($, message))
 
   return rulesLoaded
     ? 'Autoresearch mode ON — rules loaded from .auto/prompt.md'

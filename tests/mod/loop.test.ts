@@ -205,8 +205,41 @@ test('after a compaction the model is re-prompted with the persisted state', asy
   expect(message).toContain('## Ideas Backlog (.auto/ideas.md)\n\n- try SIMD')
   expect(message).toContain('#1 keep          100 | desc: baseline')
   expect(message).toContain('## Recent Commits (git log --oneline -n 10)\n\nc0ffee0 try it')
-  expect(message).toEndWith('Be careful not to overfit to the benchmarks and do not cheat on the benchmarks.')
-  expect(message).toContain('Run the next iteration now.')
+  expect(message).toContain('Run the next iteration now. Pick the most promising hypothesis')
+  expect(message).toContain('## Autoresearch Mode (ACTIVE)')
+})
+
+test('a resume due during a compaction waits for it, and the rehydration prompt replaces it', async ($, on) => {
+  const host = await activeSession($, on)
+  await startTurn($, 't1')
+  await logExperiment($)
+  await endTurn($, 't1')
+  host.compactionMs = 5_000
+
+  const compaction = $.session.compact({ trigger: 'manual', messages: [SUMMARY] })
+  await host.world.clock.advance(2_000)
+  expect(host.submitted).toEqual([])
+  await host.world.clock.advance(3_000)
+  await compaction
+  await host.world.clock.advance(800)
+
+  expect(host.submitted.length).toBe(1)
+  expect(host.submitted[0]).toStartWith('# Autoresearch Compaction Summary')
+})
+
+test('/autoresearch off queued behind a compaction drops the resume that was due', async ($, on) => {
+  const host = await activeSession($, on)
+  await startTurn($, 't1')
+  await logExperiment($)
+  await endTurn($, 't1')
+  host.compactionMs = 5_000
+
+  const compaction = $.session.compact({ trigger: 'manual', messages: [SUMMARY] })
+  await host.world.clock.advance(5_000)
+  await compaction
+  expect(await autoresearch($, 'off')).toBe('Autoresearch mode OFF')
+  await host.world.clock.advance(5_000)
+  expect(host.submitted).toEqual([])
 })
 
 test('no re-prompt after a compaction while the mode is off, or a skipped one', async ($, on) => {
@@ -218,7 +251,49 @@ test('no re-prompt after a compaction while the mode is off, or a skipped one', 
   expect(host.submitted).toEqual([])
 })
 
+test('where session.compact is bypassed, /compact still re-prompts with the persisted state', async ($, on) => {
+  let compacted = 0
+  on('command.run', { command: 'compact' }, () => {
+    compacted++
+    return { text: 'Compacted' }
+  })
+  const host = await activeSession($, on)
+  await $.command.run({ command: 'compact', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  await host.world.clock.advance(800)
+  expect(compacted).toBe(1)
+  expect(host.submitted.length).toBe(1)
+  expect(host.submitted[0]).toStartWith('# Autoresearch Compaction Summary')
+})
+
+test('where session.compact is bypassed, a transcript that shrank during a turn means it compacted', async ($, on) => {
+  const host = await activeSession($, on)
+  host.messageCount = 40
+  await startTurn($, 't1')
+  await endTurn($, 't1')
+  await startTurn($, 't2')
+  await logExperiment($)
+  host.messageCount = 3
+  await endTurn($, 't2')
+  await host.world.clock.advance(800)
+  expect(host.submitted.length).toBe(1)
+  expect(host.submitted[0]).toStartWith('# Autoresearch Compaction Summary')
+})
+
 // System prompt
+
+test('where prompt.compose is bypassed, the user\'s prompts carry the section as context', async ($, on) => {
+  const host = await activeSession($, on)
+  const submit = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+
+  const { context } = await submit('keep going')
+  expect(context?.length).toBe(1)
+  expect(context?.[0]).toStartWith('## Autoresearch Mode (ACTIVE)')
+
+  await autoresearch($, 'off')
+  expect((await submit('thanks')).context).toBe(undefined)
+  expect(host.submitted).toEqual(['keep going', 'thanks'])
+})
+
 
 test('the system prompt carries the autoresearch section while the mode is on', async ($, on) => {
   const host = await activeSession($, on)
