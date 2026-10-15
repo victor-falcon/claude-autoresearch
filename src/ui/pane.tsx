@@ -8,7 +8,7 @@ import type { On } from 'claude-code'
 import { getExperiment, getRunning } from '../runtime/state.ts'
 import { closeDashboard, DASHBOARD_PANE, notePaneLayout, pageRows, paneRowKey, paneScrollInfo, scrollPaneBy, scrollPaneToEdge } from './dashboard.ts'
 import { cellWidth, paneLines, sessionTitle, truncateText } from './format.ts'
-import { lineText } from './lines.tsx'
+import { lineText, toneProps } from './lines.tsx'
 
 /** Rows the pane draws above the table: the title and the keys. */
 const HEADER_ROWS = 2
@@ -31,7 +31,7 @@ export function registerPane(on: On): void {
     return (
       <Box flexDirection="column">
         <Box key={paneRowKey(0)} flexDirection="row" justifyContent="space-between">
-          <Text color="claude" bold wrap="truncate">
+          <Text {...toneProps('title', true)} wrap="truncate">
             {truncateText(` ${sessionTitle(state)}`, Math.max(1, width - cellWidth(position)))}
           </Text>
           <Text dimColor>{position}</Text>
@@ -41,7 +41,7 @@ export function registerPane(on: On): void {
           {key('k', '↑', () => scrollPaneBy($, -1))}
           {key('d', isWide ? 'page ↓' : 'pg↓', () => scrollPaneBy($, pageRows()))}
           {key('u', isWide ? 'page ↑' : 'pg↑', () => scrollPaneBy($, -pageRows()))}
-          {key('g', isWide ? 'top/end' : 'g/G', () => scrollPaneToEdge($))}
+          {key('g', 'top/end', () => scrollPaneToEdge($))}
           {key('q', 'close', () => closeDashboard($))}
         </Box>
         {lines.map((line, i) => <Box key={paneRowKey(HEADER_ROWS + i)}>{lineText(Text, line)}</Box>)}

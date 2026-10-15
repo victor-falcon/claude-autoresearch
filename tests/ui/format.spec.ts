@@ -128,6 +128,11 @@ test('the widget shows four rows below 95 columns and shrinks to fit maxRows', (
   assert.equal(narrow.filter(line => /^ {2}\d /.test(line)).length, 4)
   const short = widgetLines({ state: session(RUNS), running: null, now: 0, width: 120, maxRows: 12 })
   assert.ok(short.length <= 12)
+  assert.ok(short.map(text).some(line => line.includes('commit')))
+  // Too short for even one table row: the compact summary.
+  const tiny = widgetLines({ state: session(RUNS), running: null, now: 0, width: 120, maxRows: 6 }).map(text)
+  assert.equal(tiny[0], '🔬 autoresearch: Speed up parser')
+  assert.ok(tiny.length <= 4)
 })
 
 test('the widget is compact below 60 columns and never wider than the band', () => {
@@ -139,8 +144,8 @@ test('the widget is compact below 60 columns and never wider than the band', () 
   }
 })
 
-test('the widget is empty with no runs, and a running line before the first result', () => {
-  assert.deepEqual(widgetLines({ state: session([]), running: null, now: 0, width: 120, maxRows: 40 }), [])
+test('the widget is one line with no runs, and a running line before the first result', () => {
+  assert.deepEqual(widgetLines({ state: session([]), running: null, now: 0, width: 120, maxRows: 40 }).map(text), ['🔬 autoresearch: Speed up parser · no experiments yet'])
   const [line] = widgetLines({ state: session([]), running: { startedAt: 0, command: '.auto/measure.sh' }, now: 3_000, width: 200, maxRows: 40 })
   assert.equal(text(line!), `🔬 ${spinnerFrame(3_000)} running… 3s │ Speed up parser │ .auto/measure.sh │ waiting for first logged result`)
 })

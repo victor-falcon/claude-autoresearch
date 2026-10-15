@@ -4,6 +4,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { getEnabled, getExperiment } from '../runtime/state.ts'
+import { sessionTitle } from './format.ts'
 
 export const DASHBOARD_PANE = 'autoresearch-dashboard'
 
@@ -17,7 +18,10 @@ const scroll = { offset: 0, bodyRows: 0, contentRows: 0 }
 const maxOffset = () => Math.max(0, scroll.contentRows - scroll.bodyRows)
 const clamp = (offset: number) => Math.min(maxOffset(), Math.max(0, offset))
 
-/** What the last draw of the pane saw. */
+/**
+ * Where the window stands, from a draw or a move. Draws report it too: the
+ * terminal's own moves (a clamp, an end followed) raise no `ui.scroll`.
+ */
 export function notePaneLayout(offset: number, bodyRows: number, contentRows: number): void {
   scroll.bodyRows = bodyRows
   scroll.contentRows = contentRows
@@ -57,9 +61,7 @@ export async function scrollPaneToEdge($: Scroll$): Promise<void> {
 /** Follow every move of the pane's window, the person's and the keys'. */
 export function registerPaneScroll(on: On): void {
   on('ui.scroll', { component: 'Pane', requestId: DASHBOARD_PANE }, ($, e, next) => {
-    scroll.bodyRows = e.bodyRows
-    scroll.contentRows = e.contentRows
-    scroll.offset = clamp(e.offset)
+    notePaneLayout(e.offset, e.bodyRows, e.contentRows)
     return next(e)
   }).catch(($, e, next) => next(e))
 }
@@ -76,14 +78,14 @@ export async function openDashboard($: Pick<EngineInterface, 'state' | 'ui'>, _a
   scroll.offset = 0
   const opened = await $.ui.open({
     id: DASHBOARD_PANE,
-    title: state.name ? `autoresearch: ${state.name}` : 'autoresearch',
+    title: sessionTitle(state).replace(/^🔬 /, ''),
     focus: true,
     closeOnEscape: true,
     // As tall as the layout spares: the whole table when it fits.
     rows: state.results.length + 16,
   })
   if (!opened.isPlaced) return `The dashboard could not be shown here (${opened.reason}).`
-  return 'Dashboard opened: ↑↓/j/k scroll, PgUp/PgDn/u/d page, g/G top/bottom, Esc/q close.'
+  return 'Dashboard opened: ↑↓/j/k scroll, PgUp/PgDn/u/d page, g (or Home/End) top/bottom, Esc/q close.'
 }
 
 export async function closeDashboard($: Scroll$): Promise<void> {

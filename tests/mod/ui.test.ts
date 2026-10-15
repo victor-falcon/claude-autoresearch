@@ -102,7 +102,7 @@ test('a running experiment shows a spinner and its elapsed time', async ($, on) 
   world.install(on)
   await startSession($, world)
   const ui = await $.ui.mount({ plugin: 'autoresearch', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  expect(await ui.find({ text: /autoresearch/ })).toBe(undefined)
+  expect((await rows(ui)).includes('🔬 autoresearch: Speed up parser · no experiments yet')).toBe(true)
 
   const pending = call($, RUN, { command: 'sleep 100', timeout_seconds: 5 })
   await world.clock.settle()

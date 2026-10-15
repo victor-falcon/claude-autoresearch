@@ -21,14 +21,14 @@ export function toneProps(tone: Tone, bold?: boolean): TextProps {
 }
 
 /** One Text row of a line, never wrapped: the formatter already fits the width. */
-export function lineText(Text: ElementConstructor<TextProps>, line: Line): RenderElement {
+export function lineText(Text: ElementConstructor<TextProps>, line: Line, key?: string): RenderElement {
   return (
-    <Text wrap="truncate">
-      {line.length === 0 ? ' ' : line.map(part => <Text {...toneProps(part.tone, part.bold)}>{part.text}</Text>)}
+    <Text key={key} wrap="truncate">
+      {line.length === 0 ? ' ' : line.map((part, i) => <Text key={String(i)} {...toneProps(part.tone, part.bold)}>{part.text}</Text>)}
     </Text>
   )
 }
 
 export function lineRows(Text: ElementConstructor<TextProps>, lines: readonly Line[]): RenderElement[] {
-  return lines.map(line => lineText(Text, line))
+  return lines.map((line, i) => lineText(Text, line, String(i)))
 }

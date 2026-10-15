@@ -135,6 +135,23 @@ function signedPercent(value: number, base: number): string {
   return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`
 }
 
+/** `⠋ running… 12s`. */
+function runningLabel(running: RunningExperiment, now: number): string {
+  return `${spinnerFrame(now)} running… ${formatElapsed(Math.max(0, now - running.startedAt))}`
+}
+
+/** `12`, or `12/50` with a maxIterations limit. */
+function runsLabel(state: ExperimentState): string {
+  return state.maxExperiments === null ? String(state.results.length) : `${state.results.length}/${state.maxExperiments}`
+}
+
+/** `-20.0%` against the baseline, toned by direction; null when there is none. */
+function deltaVsBaseline(state: ExperimentState, value: number): Segment | null {
+  const baseline = state.baselineMetric
+  if (baseline === null || baseline === 0 || value === baseline) return null
+  return seg(signedPercent(value, baseline), isBetter(value, baseline, state.bestDirection) ? 'success' : 'error')
+}
+
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
@@ -143,9 +160,11 @@ export function sessionTitle(state: ExperimentState): string {
   return `🔬 autoresearch${state.name ? `: ${oneLine(state.name)}` : ''}`
 }
 
+type BestRun = { metric: number; index: number; metrics: Record<string, number> }
+
 /** The best kept run of the current segment: value, 1-based index, metrics. */
-function bestKeptRun(state: ExperimentState): { metric: number; index: number; metrics: Record<string, number> } | null {
-  let best: { metric: number; index: number; metrics: Record<string, number> } | null = null
+function bestKeptRun(state: ExperimentState): BestRun | null {
+  let best: BestRun | null = null
   state.results.forEach((r, i) => {
     if (r.segment !== state.currentSegment || r.status !== 'keep' || r.metric <= 0) return
     // Ties go to the latest run, as upstream's backward scan does.
@@ -171,20 +190,15 @@ export function titleRule(state: ExperimentState, width: number): Line {
 
 /** `  7  ⠋ running… 12s`: the row the next run will take. */
 export function runningRow(state: ExperimentState, running: RunningExperiment, now: number, width: number): Line {
-  const elapsed = formatElapsed(Math.max(0, now - running.startedAt))
-  return truncateLine(
-    [seg('  '), seg(String(state.results.length + 1).padEnd(3), 'dim'), seg(`${spinnerFrame(now)} running… ${elapsed}`, 'warning')],
-    width,
-  )
+  return truncateLine([seg('  '), seg(String(state.results.length + 1).padEnd(3), 'dim'), seg(runningLabel(running, now), 'warning')], width)
 }
 
 /** The one-line widget while the first experiment runs (upstream). */
 export function firstRunLine(state: ExperimentState, running: RunningExperiment, now: number, width: number): Line {
-  const elapsed = formatElapsed(Math.max(0, now - running.startedAt))
   return truncateLine(
     [
       seg('🔬', 'title'),
-      seg(` ${spinnerFrame(now)} running… ${elapsed}`, 'warning'),
+      seg(` ${runningLabel(running, now)}`, 'warning'),
       ...(state.name ? [seg(` │ ${oneLine(state.name)}`, 'dim')] : []),
       seg(` │ ${oneLine(running.command)}`, 'dim'),
       seg(' │ waiting for first logged result', 'dim'),
@@ -204,11 +218,10 @@ export function summaryLine(state: ExperimentState, width: number): Line {
   const discarded = count('discard')
   const crashed = count('crash')
   const checksFailed = count('checks_failed')
-  const runs = state.maxExperiments === null ? String(state.results.length) : `${state.results.length}/${state.maxExperiments}`
   return truncateLine(
     [
       seg('  Runs: ', 'muted'),
-      seg(runs),
+      seg(runsLabel(state)),
       seg(`  ${count('keep')} kept`, 'success'),
       ...(state.confidence !== null ? [seg(`  (conf: ${state.confidence.toFixed(1)}×)`, confidenceTone(state.confidence))] : []),
       ...(discarded > 0 ? [seg(`  ${discarded} discarded`, 'warning')] : []),
@@ -239,9 +252,8 @@ function headlineLines(state: ExperimentState, width: number): Line[] {
     seg(`★ ${state.metricName}: ${formatNum(best.metric, state.metricUnit)}`, 'warning', true),
     seg(` #${best.index}`, 'dim'),
   ]
-  if (baseline !== null && baseline !== 0 && best.metric !== baseline) {
-    progress.push(seg(` (${signedPercent(best.metric, baseline)})`, isBetter(best.metric, baseline, state.bestDirection) ? 'success' : 'error'))
-  }
+  const delta = deltaVsBaseline(state, best.metric)
+  if (delta) progress.push({ ...delta, text: ` (${delta.text})` })
   lines.push(truncateLine(progress, width))
 
   // Secondary metrics of the best run, flow-wrapped under the progress value.
@@ -252,6 +264,7 @@ function headlineLines(state: ExperimentState, width: number): Line[] {
     if (value === undefined) continue
     const part: Line = [seg(`${metric.name}: ${formatNum(value, metric.unit)}`, 'muted')]
     const base = baselineSec[metric.name]
+    // Secondary metrics read lower as better, as upstream colours them.
     if (base !== undefined && base !== 0 && value !== base) {
       part.push(seg(` ${signedPercent(value, base)}`, value <= base ? 'success' : 'error'))
     }
@@ -381,12 +394,11 @@ export type WidgetInput = {
 /** The compact widget for narrow bands: title, summary, best, spinner. */
 function compactWidget({ state, running, now, width }: WidgetInput): Line[] {
   const lines: Line[] = [truncateLine([seg(sessionTitle(state), 'title')], width)]
-  const runs = state.maxExperiments === null ? `${state.results.length}` : `${state.results.length}/${state.maxExperiments}`
   const kept = currentResults(state.results, state.currentSegment).filter(r => r.status === 'keep').length
   lines.push(
     truncateLine(
       [
-        seg(`${runs} runs `, 'muted'),
+        seg(`${runsLabel(state)} runs `, 'muted'),
         seg(`${kept} kept`, 'success'),
         ...(state.confidence !== null ? [seg(` conf ${state.confidence.toFixed(1)}×`, confidenceTone(state.confidence))] : []),
       ],
@@ -396,26 +408,30 @@ function compactWidget({ state, running, now, width }: WidgetInput): Line[] {
   const best = bestKeptRun(state)
   if (best !== null) {
     const line: Line = [seg('★ ', 'warning'), seg(formatNum(best.metric, state.metricUnit), 'warning', true)]
-    const baseline = state.baselineMetric
-    if (baseline !== null && baseline !== 0 && best.metric !== baseline) {
-      line.push(seg(` ${signedPercent(best.metric, baseline)}`, isBetter(best.metric, baseline, state.bestDirection) ? 'success' : 'error'))
-    }
-    line.push(seg(` (base ${formatNum(baseline, state.metricUnit)})`, 'dim'))
+    const delta = deltaVsBaseline(state, best.metric)
+    if (delta) line.push({ ...delta, text: ` ${delta.text}` })
+    line.push(seg(` (base ${formatNum(state.baselineMetric, state.metricUnit)})`, 'dim'))
     lines.push(truncateLine(line, width))
   }
-  if (running) lines.push(truncateLine([seg(`${spinnerFrame(now)} running… ${formatElapsed(Math.max(0, now - running.startedAt))}`, 'warning')], width))
+  if (running) lines.push(truncateLine([seg(runningLabel(running, now), 'warning')], width))
   return lines
 }
 
+/** One line while the mode is on and nothing has run yet. */
+export function idleLine(state: ExperimentState, width: number): Line {
+  return truncateLine([seg(sessionTitle(state), 'title'), seg(' · no experiments yet', 'dim')], width)
+}
+
 /**
- * The widget above the prompt: nothing until there is a result or a run, the
- * running line before the first result, the dashboard after (upstream).
- * Rows of the table shrink so the widget fits `maxRows` when it can.
+ * The widget above the prompt while the mode is on: a line until the first
+ * result (the running line while it runs), the dashboard after (upstream).
+ * Rows of the table shrink so the widget fits `maxRows`; when even one row
+ * does not fit, the compact summary stands in.
  */
 export function widgetLines(input: WidgetInput): Line[] {
   const { state, running, now, width, maxRows } = input
   if (width <= 0) return []
-  if (state.results.length === 0) return running ? [firstRunLine(state, running, now, width)] : []
+  if (state.results.length === 0) return [running ? firstRunLine(state, running, now, width) : idleLine(state, width)]
   if (width < COMPACT_WIDTH) return compactWidget(input)
 
   const wanted = width < NARROW_TABLE_WIDTH ? WIDGET_ROWS_NARROW : WIDGET_ROWS
@@ -427,7 +443,7 @@ export function widgetLines(input: WidgetInput): Line[] {
   let rows = Math.min(wanted, state.results.length)
   let lines = build(rows)
   while (rows > 1 && lines.length > maxRows) lines = build(--rows)
-  return lines
+  return lines.length > maxRows ? compactWidget(input) : lines
 }
 
 /** The fullscreen pane's body: every run, then the running row. */
@@ -445,13 +461,12 @@ export function statusText(state: ExperimentState, running: RunningExperiment | 
   const parts = ['🔬 autoresearch']
   const n = state.results.length
   if (n === 0) parts.push('no runs yet')
-  else parts.push(`${state.maxExperiments === null ? n : `${n}/${state.maxExperiments}`} run${n === 1 && state.maxExperiments === null ? '' : 's'}`)
-  const best = state.bestKeptMetric
-  const baseline = state.baselineMetric
+  else parts.push(`${runsLabel(state)} run${n === 1 && state.maxExperiments === null ? '' : 's'}`)
+  // The same best as the widget's progress line.
+  const best = bestKeptRun(state)
   if (best !== null) {
-    let text = `best ${state.metricName} ${formatNum(best, state.metricUnit)}`
-    if (baseline !== null && baseline !== 0 && best !== baseline) text += ` (${signedPercent(best, baseline)})`
-    parts.push(text)
+    const delta = deltaVsBaseline(state, best.metric)
+    parts.push(`best ${state.metricName} ${formatNum(best.metric, state.metricUnit)}${delta ? ` (${delta.text})` : ''}`)
   }
   if (state.confidence !== null) parts.push(`conf ${state.confidence.toFixed(1)}×`)
   if (running) parts.push('running…')

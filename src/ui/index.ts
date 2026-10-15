@@ -19,7 +19,7 @@ export function registerUi(on: On): void {
   registerStatus(on)
 }
 
-/** Session start: pin the status line for the state just reloaded. */
+/** Session start: pin the status line for the state just reloaded (never throws). */
 export async function startUi($: Pick<EngineInterface, 'clock' | 'state' | 'ui'>): Promise<void> {
   await syncStatus($)
 }
