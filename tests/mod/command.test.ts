@@ -164,7 +164,7 @@ test('/autoresearch dashboard and export answer what their modules answer, witho
   await startSession($, host.world)
 
   expect(await autoresearch($, 'dashboard')).toBe('Autoresearch mode is not active.')
-  expect(await autoresearch($, 'export')).toContain('export')
+  expect(await autoresearch($, 'export')).toBe('No .auto/log.jsonl found — run some experiments first')
   expect(host.world.state.enabled ?? false).toBe(false)
 })
 
