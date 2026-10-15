@@ -25,6 +25,8 @@ export class World {
   /** Shell command lines (as the tool got them) or `bash '<path>'` → what they do. */
   readonly scripts = new Map<string, ScriptHandler>()
   invalidated = 0
+  /** Lines the mod wrote with `$.ui.log`. */
+  readonly logs: string[] = []
   clock!: MockClock
 
   constructor(readonly cwd: string, files: Record<string, string> = {}) {
@@ -79,6 +81,7 @@ export class World {
       return ok(`[main ${sha}] ${(argv[3] ?? '').split('\n')[0]}\n 1 file changed`)
     }
     if (verb === 'rev-parse') return ok(`${this.commits.at(-1)?.sha ?? '0000000'}\n`)
+    if (verb === 'log') return ok(this.commits.map(c => `${c.sha} ${c.message.split('\n')[0]}\n`).reverse().join(''))
     return { exitCode: 1, stdout: '', stderr: `fake git: ${argv.join(' ')}` }
   }
 
@@ -112,7 +115,10 @@ export class World {
       this.invalidated++
       return { value: undefined }
     })
-    on('ui.log', () => ({ value: undefined }))
+    on('ui.log', ($, e) => {
+      this.logs.push(e.text)
+      return { value: undefined }
+    })
     on('env.get', () => ({ value: undefined }))
     on('fs.exists', ($, e) => ({ value: this.files.has(e.path) || this.isDir(e.path) }))
     on('fs.stat', ($, e) => {
@@ -136,6 +142,10 @@ export class World {
       if (e.argv[0] === 'git') return { value: { ...this.git(e.argv), isStdoutTruncated: false, isStderrTruncated: false } }
       if (e.argv[0] === 'test' && e.argv[1] === '-x') {
         return { value: { exitCode: this.executables.has(e.argv[2]!) ? 0 : 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+      }
+      if (e.argv[0] === 'rm') {
+        for (const path of e.argv.slice(1).filter(arg => !arg.startsWith('-'))) this.files.delete(path)
+        return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
       }
       if (e.argv[0] === 'bash' && String(e.argv[2]).includes('git checkout')) {
         this.revert()

@@ -53,8 +53,8 @@ test('session start rebuilds the experiment state from .auto/log.jsonl', async (
     hasPersistedLog: true,
     logReadError: null,
   })
-  // Auto-activation is the loop module's; the runtime leaves the mode alone.
-  expect(state.enabled).toBe(undefined)
+  // A persisted log in the cwd switches the mode on (the loop's startLoop).
+  expect(state.enabled).toBe(true)
 
   expect(state.running).toBe(null)
   expect(state.lastRun).toEqual({ checks: null, durationSeconds: null })
