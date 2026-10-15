@@ -3,9 +3,9 @@
 
 import type { Register } from 'claude-code'
 
-import { registerCommand } from '../src/command/index.ts'
+import { registerCommand, startCommand } from '../src/command/index.ts'
 import { registerExport } from '../src/export/index.ts'
-import { registerLoop } from '../src/loop/index.ts'
+import { registerLoop, startLoop } from '../src/loop/index.ts'
 import { startRuntime } from '../src/runtime/index.ts'
 import { registerTools, startTools } from '../src/tools/index.ts'
 import { registerUi, startUi } from '../src/ui/index.ts'
@@ -16,6 +16,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await startRuntime($)
     await startTools($)
+    await startCommand($)
+    await startLoop($)
     await startUi($)
     return next(e)
   })

@@ -1,0 +1,99 @@
+// Auto-resume: after a main-loop turn ends while the mode is on, wait a short
+// settle window and send the model a prompt to run the next iteration
+// (upstream `ensurePendingResume` / `sendPendingResumeIfReady`).
+//
+// The pending prompt itself lives in `$.state` (`autoResume.pendingResume`);
+// the timer and the running turn's id are this module's.
+
+import type { EngineInterface, Timer } from 'claude-code'
+
+import { autoResumeStopReasonFor } from '../core/autoresume.ts'
+import { getAutoResume, getEnabled, getExperiment, updateAutoResume } from '../runtime/state.ts'
+
+export type Resume$ = Pick<EngineInterface, 'clock' | 'prompt' | 'state' | 'ui'>
+
+/** How long the agent must stay settled before a resume prompt goes out. */
+export const SETTLED_WINDOW_MS = 800
+
+let timer: Timer | null = null
+let runningTurnId: string | null = null
+
+/** The main loop's turn in flight (its `turn.start` id), or null when idle. */
+export function runningTurn(): string | null {
+  return runningTurnId
+}
+
+export function setRunningTurn(turnId: string | null): void {
+  runningTurnId = turnId
+}
+
+/** Stop the timer, keeping the pending prompt for a later reschedule. */
+export function pausePendingResume(): void {
+  timer?.cancel()
+  timer = null
+}
+
+/** Drop the pending prompt and its timer. */
+export async function cancelPendingResume($: Pick<EngineInterface, 'state'>): Promise<void> {
+  pausePendingResume()
+  await updateAutoResume($, value => (value.pendingResume ? { ...value, pendingResume: null } : value))
+}
+
+async function stopReason($: Resume$): Promise<string | null> {
+  const autoResume = await getAutoResume($)
+  return autoResumeStopReasonFor({ autoResumeTurns: autoResume.turns, state: await getExperiment($) })
+}
+
+async function schedulePendingResume($: Resume$, message: string): Promise<void> {
+  pausePendingResume()
+  const dueAt = (await $.clock.now()) + SETTLED_WINDOW_MS
+  await updateAutoResume($, value => ({ ...value, pendingResume: { message, dueAt } }))
+  timer = $.clock.after(SETTLED_WINDOW_MS, () => {
+    timer = null
+    sendPendingResumeIfReady($).catch(error => $.ui.log(`autoresearch: auto-resume failed: ${messageOf(error)}`))
+  })
+}
+
+/** Send the pending prompt, unless the mode went off, a turn runs or a guard stops it. */
+export async function sendPendingResumeIfReady($: Resume$): Promise<void> {
+  const pending = (await getAutoResume($)).pendingResume
+  if (!pending) return
+  if (!(await getEnabled($))) {
+    await cancelPendingResume($)
+    return
+  }
+  // A turn is running: its end reschedules the pending prompt.
+  if (runningTurnId !== null) return
+  const reason = await stopReason($)
+  if (reason !== null) {
+    await cancelPendingResume($)
+    $.ui.toast(reason)
+    return
+  }
+  await updateAutoResume($, value => ({ ...value, pendingResume: null, turns: value.turns + 1 }))
+  // Queued by the engine until the session is idle; resolves as its turn starts.
+  $.prompt.submit({ text: pending.message }).catch(error => $.ui.log(`autoresearch: could not send the resume prompt: ${messageOf(error)}`))
+}
+
+/**
+ * Schedule a resume prompt: an already pending one is rescheduled as is;
+ * otherwise, when `gate` allows and no guard stops it, `compose()`'s.
+ */
+export async function ensurePendingResume($: Resume$, gate: boolean, compose: () => string | Promise<string>): Promise<void> {
+  const pending = (await getAutoResume($)).pendingResume
+  if (pending) {
+    await schedulePendingResume($, pending.message)
+    return
+  }
+  if (!gate) return
+  const reason = await stopReason($)
+  if (reason !== null) {
+    $.ui.toast(reason)
+    return
+  }
+  await schedulePendingResume($, await compose())
+}
+
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
