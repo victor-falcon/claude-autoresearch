@@ -10,7 +10,6 @@ import {
   composeCompactionResumeMessage,
   composeResumeMessage,
   countConsecutiveDiscardOrCrashResults,
-  shouldAutoActivateAutoresearch,
   shouldAutoResumeAfterTurn,
 } from "../../src/core/autoresume.ts";
 
@@ -93,12 +92,4 @@ test("resume messages carry the benchmark guardrail", () => {
   assert.ok(composeResumeMessage().endsWith(BENCHMARK_GUARDRAIL));
   assert.match(composeCompactionResumeMessage(), /Do not re-read \.auto\/prompt\.md or \.auto\/log\.jsonl/);
   assert.ok(composeCompactionResumeMessage().endsWith(BENCHMARK_GUARDRAIL));
-});
-
-test("auto-activation needs a log; a recorded decision wins; redirected dirs default off", () => {
-  assert.equal(shouldAutoActivateAutoresearch(true, false, true), false);
-  assert.equal(shouldAutoActivateAutoresearch(true, true), true);
-  assert.equal(shouldAutoActivateAutoresearch(false, true), false);
-  assert.equal(shouldAutoActivateAutoresearch(true, true, false), false);
-  assert.equal(shouldAutoActivateAutoresearch(false, true, true), true);
 });

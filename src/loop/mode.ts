@@ -4,7 +4,6 @@
 
 import type { EngineInterface } from 'claude-code'
 
-import { shouldAutoActivateAutoresearch } from '../core/autoresume.ts'
 import { canonicalDir, sessionWorkDir } from '../runtime/index.ts'
 import {
   defaultAutoResume,
@@ -22,30 +21,28 @@ import { messageOf, pausePendingResume, runningTurn } from './resume.ts'
 
 type Mode$ = Pick<EngineInterface, 'fs' | 'session' | 'state'>
 
-/** Record an explicit `/autoresearch` on/off for the work dir; it wins over auto-activation. */
+/** Record an explicit `/autoresearch` on/off for the work dir, restored when session start runs again. */
 export async function recordActivation($: Mode$, active: boolean): Promise<void> {
   const key = await canonicalDir($, await sessionWorkDir($))
   await updateDecisions($, decisions => ({ ...decisions, [key]: active }))
 }
 
 /**
- * Switch the mode on by itself at session start when the work dir has a
- * persisted log (`shouldAutoActivateAutoresearch`). An explicit decision
- * recorded this session wins, log or not: a reload runs session start again,
- * and a session just started with `/autoresearch <goal>` has no log yet.
- * Runs after `startRuntime`, which reloaded the paths.
+ * Restore the mode at session start. It never switches on by itself, not even
+ * with a persisted log: only an explicit decision recorded this session is
+ * applied, since a reload runs session start again and a session just started
+ * with `/autoresearch <goal>` must stay on. Runs after `startRuntime`, which
+ * reloaded the paths.
  */
 export async function startLoop($: Mode$ & Pick<EngineInterface, 'ui'>): Promise<void> {
   try {
     const paths = await getPaths($)
     if (!paths) return
-    const cwd = await canonicalDir($, paths.cwd)
     const workDir = await canonicalDir($, paths.workDir)
     const recorded = (await getDecisions($))[workDir]
     if (recorded !== undefined) await setEnabled($, recorded)
-    else if (shouldAutoActivateAutoresearch(cwd === workDir, paths.hasPersistedLog)) await setEnabled($, true)
   } catch (error) {
-    $.ui.log(`autoresearch: could not decide whether to activate: ${messageOf(error)}`)
+    $.ui.log(`autoresearch: could not restore the mode: ${messageOf(error)}`)
   }
 }
 

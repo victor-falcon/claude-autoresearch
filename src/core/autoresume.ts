@@ -1,5 +1,5 @@
 /**
- * Auto-resume guards, resume prompts and auto-activation (ported from
+ * Auto-resume guards and resume prompts (ported from
  * pi-autoresearch `index.ts`).
  */
 
@@ -70,21 +70,4 @@ export function composeCompactionResumeMessage(): string {
     "Do not re-read .auto/prompt.md or .auto/log.jsonl — the compaction summary already contains them.",
     BENCHMARK_GUARDRAIL,
   ].join(" ");
-}
-
-/**
- * Whether autoresearch mode should switch on by itself at session start.
- *
- * Only with a persisted log. An explicit `/autoresearch on|off` recorded this
- * session wins; otherwise same-directory sessions default on (a log implies
- * intent) and redirected `workingDir` sessions default off until opted in.
- */
-export function shouldAutoActivateAutoresearch(
-  isSameDir: boolean,
-  hasPersistedLog: boolean,
-  recordedDecision: boolean | null = null,
-): boolean {
-  if (!hasPersistedLog) return false;
-  if (recordedDecision !== null) return recordedDecision;
-  return isSameDir;
 }

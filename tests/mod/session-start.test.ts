@@ -53,8 +53,8 @@ test('session start rebuilds the experiment state from .auto/log.jsonl', async (
     hasPersistedLog: true,
     logReadError: null,
   })
-  // A persisted log in the cwd switches the mode on (the loop's startLoop).
-  expect(state.enabled).toBe(true)
+  // A persisted log never switches the mode on by itself.
+  expect(state.enabled ?? false).toBe(false)
 
   expect(state.running).toBe(null)
   expect(state.lastRun).toEqual({ checks: null, durationSeconds: null })

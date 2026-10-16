@@ -35,8 +35,6 @@ test('/autoresearch <text> with .auto/prompt.md resumes with the text, before.sh
   const host = new LoopHost(world)
   host.install(on, { enabled: false })
   await startSession($, world)
-  // A recorded "off" keeps the logged session from auto-activating.
-  await autoresearch($, 'off')
 
   const text = await autoresearch($, 'go faster')
   expect(text).toBe('Autoresearch mode ON — rules loaded from .auto/prompt.md')
@@ -85,9 +83,11 @@ test('/autoresearch <text> while active says so and sends nothing', async ($, on
 test('/autoresearch off stops the loop and the turn in flight, and keeps the log', async ($, on) => {
   const world = new World('/repo', { '.auto/prompt.md': '# rules', '.auto/log.jsonl': LOG_WITH_RUN })
   const host = new LoopHost(world)
-  host.install(on)
+  host.install(on, { enabled: false })
   await startSession($, world)
+  await autoresearch($, 'go')
   expect(world.state.enabled).toBe(true)
+  host.submitted.length = 0
 
   // A turn that logged a run leaves a resume pending; the user's next turn holds it.
   await startTurn($, 'turn-1')

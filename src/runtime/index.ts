@@ -11,8 +11,8 @@ export * from './state.ts'
  * `session.start` hook (a module may hook `session.start` only once without a
  * matcher), so every feature's start work sees the reloaded experiment state.
  *
- * It does not touch `enabled` or `decisions`: auto-activation
- * (`shouldAutoActivateAutoresearch`) belongs to the loop module (T4).
+ * It does not touch `enabled` or `decisions`: restoring the mode belongs to
+ * the loop module (`startLoop`).
  */
 export async function startRuntime($: Pick<EngineInterface, 'fs' | 'session' | 'state' | 'ui'>): Promise<void> {
   try {

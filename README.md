@@ -158,7 +158,7 @@ This activates autoresearch mode and makes the experiment tools available. If `.
 
 The agent asks about your goal, command, metric and files in scope, or infers them from context. It then creates a branch, writes `.auto/prompt.md` and `.auto/measure.sh` (and `.auto/checks.sh` when correctness matters), runs the baseline, and starts looping immediately.
 
-Opening Claude Code in a directory that already has a session log turns the mode on by itself, so the widget and tools are back. Send a message (for example `continue the loop`) to resume it, or `/autoresearch off` to leave it.
+The mode never turns on by itself: opening Claude Code in a directory that already has a session log leaves it off, with no widget and the tools inactive. Run `/autoresearch <text>` (for example `/autoresearch continue the loop`) to pick the session up again.
 
 ### 2. The loop
 
