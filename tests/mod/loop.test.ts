@@ -7,13 +7,13 @@ import { World, startSession } from './world.ts'
 
 const RESUME = composeResumeMessage()
 
-// Auto-activation at session start
+// Mode at session start
 
-test('a session with a persisted log in the cwd activates the mode', async ($, on) => {
+test('a session with a persisted log in the cwd stays off', async ($, on) => {
   const host = new LoopHost(new World('/repo', { '.auto/log.jsonl': LOG_WITH_RUN }))
   host.install(on, { enabled: false })
   await startSession($, host.world)
-  expect(host.world.state.enabled).toBe(true)
+  expect(host.world.state.enabled ?? false).toBe(false)
 })
 
 test('a session without a log stays off', async ($, on) => {
@@ -23,18 +23,11 @@ test('a session without a log stays off', async ($, on) => {
   expect(host.world.state.enabled ?? false).toBe(false)
 })
 
-test('a redirected workingDir session stays off until opted in', async ($, on) => {
-  const world = new World('/repo', { '.auto/config.json': '{"workingDir":"/repo/pkg"}', 'pkg/.auto/log.jsonl': LOG_WITH_RUN })
-  const host = new LoopHost(world)
-  host.install(on, { enabled: false })
-  await startSession($, world)
-  expect(world.state.enabled ?? false).toBe(false)
-})
-
-test('an explicit off recorded this session wins over auto-activation', async ($, on) => {
-  const host = new LoopHost(new World('/repo', { '.auto/log.jsonl': LOG_WITH_RUN }))
+test('an explicit off recorded this session survives a reload', async ($, on) => {
+  const host = new LoopHost(new World('/repo', { '.auto/prompt.md': '# rules', '.auto/log.jsonl': LOG_WITH_RUN }))
   host.install(on, { enabled: false })
   await startSession($, host.world)
+  await autoresearch($, 'go')
   await autoresearch($, 'off')
   // A reload runs session start again; the decision is the session's.
   await startSession($, host.world)
@@ -57,7 +50,10 @@ async function activeSession($: Engine, on: On): Promise<LoopHost> {
   const host = new LoopHost(world)
   host.install(on, { enabled: false })
   await startSession($, world)
+  await autoresearch($, 'go')
   expect(world.state.enabled).toBe(true)
+  // Start from a clean slate: the activation's kickoff prompt is not the loop's.
+  host.submitted.length = 0
   return host
 }
 
@@ -167,6 +163,8 @@ test('reaching maxIterations turns the mode off, so the loop does not resume', a
   const host = new LoopHost(world)
   host.install(on, { enabled: false })
   await startSession($, world)
+  await autoresearch($, 'go')
+  host.submitted.length = 0
   await startTurn($, 't1')
   expect(await logExperiment($)).toContain('Maximum experiments reached (2)')
   await endTurn($, 't1')

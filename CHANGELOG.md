@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
+### Changed
+
+- Autoresearch mode no longer turns on by itself when Claude Code opens in a directory with a session log. It only turns on with `/autoresearch <text>`, so `/autoresearch off` is no longer undone by the next session.
+
 ## [0.1.0] - 2026-10-15
 
 First release: a port of [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch) (by Tobi Lutke and David Cortés, MIT) from pi to Claude Code, as a mod (function-hooks plugin) plus plugin skills. Session files are compatible with pi-autoresearch.

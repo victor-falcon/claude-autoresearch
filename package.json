@@ -1,6 +1,6 @@
 {
   "name": "claude-autoresearch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Autonomous experiment loop for Claude Code (dev tooling only; the mod has no runtime dependencies).",
