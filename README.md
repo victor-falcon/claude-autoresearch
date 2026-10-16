@@ -396,6 +396,10 @@ To try the mod in a session: `claude --plugin-dir .`
 
 Layout: `hooks/register.tsx` is a thin composition root that calls one `register*` per feature folder under `src/` (`tools`, `command`, `loop`, `ui`, `export`) and owns the single `session.start` hook; `src/runtime/` holds the shared `$.state`/`$.fs` glue; `src/core/` is the pure, unit-tested logic ported from pi-autoresearch; `types/index.d.ts` is the `$.state` contract; `skills/` holds the three plugin skills; `assets/` holds the browser dashboard template and its Node server.
 
+## Support
+
+If this plugin saves you time, you can support its development through [GitHub Sponsors](https://github.com/sponsors/victor-falcon).
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Original work © Tobi Lutke, David Cortés ([pi-autoresearch](https://github.com/davebcn87/pi-autoresearch)); Claude Code port by Víctor Falcón.
